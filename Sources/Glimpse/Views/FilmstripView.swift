@@ -12,7 +12,8 @@ struct FilmstripView: View {
             ScrollView(.horizontal) {
                 LazyHStack(spacing: spacing) {
                     ForEach(Array(model.items.enumerated()), id: \.element.id) { offset, item in
-                        FilmstripCell(url: item.url, isSelected: offset == model.index, size: cellSize)
+                        FilmstripCell(url: item.url, isSelected: offset == model.index, size: cellSize,
+                                      isNew: Workspace.shared.newFiles.contains(item.url))
                             .id(item.id)
                             .onTapGesture { model.go(to: offset) }
                             .help(item.name)
@@ -47,6 +48,7 @@ private struct FilmstripCell: View {
     let url: URL
     let isSelected: Bool
     let size: CGFloat
+    let isNew: Bool
 
     @State private var isHovered = false
 
@@ -57,6 +59,15 @@ private struct FilmstripCell: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .strokeBorder(Color.white.opacity(isSelected ? 0.95 : 0), lineWidth: 2)
+            }
+            .overlay(alignment: .topTrailing) {
+                if isNew {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 8, height: 8)
+                        .overlay(Circle().strokeBorder(Color.black.opacity(0.4), lineWidth: 1))
+                        .padding(4)
+                }
             }
             .scaleEffect(isSelected ? 1 : 0.86)
             .opacity(isSelected || isHovered ? 1 : 0.6)

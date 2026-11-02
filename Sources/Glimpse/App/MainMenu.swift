@@ -8,6 +8,7 @@ enum MainMenu {
         main.addItem(container(fileMenu()))
         main.addItem(container(editMenu()))
         main.addItem(container(viewMenu()))
+        main.addItem(container(workspaceMenu()))
         main.addItem(container(playbackMenu()))
         main.addItem(container(goMenu()))
         let window = windowMenu()
@@ -55,9 +56,11 @@ enum MainMenu {
 
     private static func fileMenu() -> NSMenu {
         let menu = NSMenu(title: "File")
+        menu.addItem(item("New Tab", #selector(ViewerWindowController.newWindowForTab(_:)), "t"))
         menu.addItem(item("Open…", #selector(AppDelegate.openDocument(_:)), "o"))
         menu.addItem(.separator())
-        menu.addItem(item("Close Window", #selector(NSWindow.performClose(_:)), "w"))
+        menu.addItem(item("Close Tab", #selector(ViewerWindowController.closeTab(_:)), "w"))
+        menu.addItem(item("Close Window", #selector(ViewerWindowController.closeWindowAndTabs(_:)), "w", [.command, .shift]))
         menu.addItem(.separator())
         menu.addItem(item("Show in Finder", #selector(ViewerWindowController.revealInFinder(_:)), "r", [.command, .shift]))
         menu.addItem(item("Move to Trash", #selector(ViewerWindowController.moveToTrash(_:)), "\u{8}"))
@@ -77,6 +80,8 @@ enum MainMenu {
 
     private static func viewMenu() -> NSMenu {
         let menu = NSMenu(title: "View")
+        menu.addItem(item("Show Sidebar", #selector(ViewerWindowController.toggleSidebar(_:)), "s", [.command, .control]))
+        menu.addItem(.separator())
         menu.addItem(item("Grid", #selector(ViewerWindowController.toggleGrid(_:)), "g", []))
         menu.addItem(item("Thumbnails", #selector(ViewerWindowController.toggleThumbnails(_:)), "t", []))
         menu.addItem(item("Info", #selector(ViewerWindowController.toggleInfo(_:)), "i", []))
@@ -93,8 +98,51 @@ enum MainMenu {
         let sort = NSMenuItem(title: "Sort By", action: nil, keyEquivalent: "")
         sort.submenu = sortMenu()
         menu.addItem(sort)
+        let types = NSMenuItem(title: "File Types", action: nil, keyEquivalent: "")
+        types.submenu = fileTypesMenu()
+        menu.addItem(types)
         menu.addItem(.separator())
         menu.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
+        return menu
+    }
+
+    /// The kinds of files that the viewer shows. The toolbar menu also has the formats.
+    private static func fileTypesMenu() -> NSMenu {
+        let menu = NSMenu(title: "File Types")
+        let action = #selector(ViewerWindowController.setFilterKind(_:))
+        menu.addItem(item("All Types", action, tag: 0))
+        menu.addItem(.separator())
+        menu.addItem(item("Images Only", action, tag: 1))
+        menu.addItem(item("Videos Only", action, tag: 2))
+        menu.addItem(item("Documents Only", action, tag: 3))
+        return menu
+    }
+
+    /// Single keys (S, B, 1 to 5) work while the viewer or the grid shows.
+    private static func workspaceMenu() -> NSMenu {
+        typealias Controller = ViewerWindowController
+        let menu = NSMenu(title: "Workspace")
+        menu.addItem(item("Quick Search…", #selector(Controller.showQuickSearch(_:)), "k"))
+        menu.addItem(.separator())
+        menu.addItem(item("Add Folder to Workspace…", #selector(AppDelegate.addFolderToWorkspace(_:)), "o", [.command, .shift]))
+        menu.addItem(item("Add Current Folder to Workspace", #selector(Controller.addCurrentFolderToWorkspace(_:))))
+        menu.addItem(.separator())
+        menu.addItem(item("Star", #selector(Controller.toggleStar(_:)), "s", []))
+        let tags = NSMenuItem(title: "Tags", action: nil, keyEquivalent: "")
+        let tagMenu = NSMenu(title: "Tags")
+        for (index, tag) in FinderTag.quickTags.enumerated() {
+            tagMenu.addItem(item(tag.name, #selector(Controller.toggleTag(_:)), "\(index + 1)", [], tag: index))
+        }
+        tags.submenu = tagMenu
+        menu.addItem(tags)
+        menu.addItem(item("Add to Board", #selector(Controller.addCurrentFileToBoard(_:)), "b", []))
+        menu.addItem(.separator())
+        menu.addItem(item("New Board", #selector(Controller.newBoard(_:))))
+        menu.addItem(item("Add Files to Board…", #selector(Controller.addFilesToBoard(_:))))
+        menu.addItem(item("Add Note", #selector(Controller.addNote(_:))))
+        menu.addItem(item("Arrange Board", #selector(Controller.arrangeBoard(_:))))
+        menu.addItem(.separator())
+        menu.addItem(item("Reopen Tabs at Launch", #selector(AppDelegate.toggleReopenAtLaunch(_:))))
         return menu
     }
 

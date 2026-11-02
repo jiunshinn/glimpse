@@ -112,6 +112,14 @@ struct ShortcutsOverlay: View {
             ("+ −", "Volume up / down"),
             ("M", "Mute"),
         ]),
+        ("Workspace", [
+            ("⌘K", "Quick Search"),
+            ("S", "Star or unstar"),
+            ("1 – 5", "Tags: Keep, Edit, Client, Print, Reject"),
+            ("B", "Add to the board"),
+            ("⌘T", "New tab"),
+            ("⌃⌘S", "Show or hide the sidebar"),
+        ]),
         ("Document", [
             ("← →", "Previous / next file"),
             ("↑ ↓  Space", "Scroll (⇧Space: back)"),
@@ -141,11 +149,14 @@ struct ShortcutsOverlay: View {
                     }
                     GridRow {
                         group(4)
-                        group(5)
+                        group(6)
                     }
                     GridRow {
                         group(2)
                         group(3)
+                    }
+                    GridRow {
+                        group(5)
                     }
                 }
             }

@@ -27,7 +27,7 @@ struct EmptyStateView: View {
                     .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [7, 6]))
                     .foregroundStyle(isDropTargeted ? Color.accentColor : Color.white.opacity(0.2))
                     .frame(width: 150, height: 150)
-                Image(systemName: isFolderWithoutImages ? "photo.badge.exclamationmark" : "photo.stack")
+                Image(systemName: symbol)
                     .font(.system(size: 54, weight: .thin))
                     .foregroundStyle(
                         LinearGradient(colors: [.white, .white.opacity(0.55)], startPoint: .top, endPoint: .bottom)
@@ -45,19 +45,32 @@ struct EmptyStateView: View {
             }
             .multilineTextAlignment(.center)
 
-            Button {
-                NSApp.sendAction(#selector(AppDelegate.openDocument(_:)), to: nil, from: nil)
-            } label: {
-                Label("Open…", systemImage: "folder")
-                    .padding(.horizontal, 8)
+            if model.filterHidesAll {
+                Button {
+                    model.filter = TypeFilter()
+                } label: {
+                    Label("Show All Types", systemImage: "line.3.horizontal.decrease.circle")
+                        .padding(.horizontal, 8)
+                }
+                .prominentGlassButtonStyle()
+                .controlSize(.large)
+            } else if model.source == nil {
+                Button {
+                    NSApp.sendAction(#selector(AppDelegate.openDocument(_:)), to: nil, from: nil)
+                } label: {
+                    Label("Open…", systemImage: "folder")
+                        .padding(.horizontal, 8)
+                }
+                .prominentGlassButtonStyle()
+                .controlSize(.large)
             }
-            .prominentGlassButtonStyle()
-            .controlSize(.large)
 
             HStack(spacing: 18) {
+                if model.source == nil {
+                    KeyHint(keys: ["⌘K"], label: "Search the workspace")
+                }
                 KeyHint(keys: ["←", "→"], label: "Browse")
                 KeyHint(keys: ["G"], label: "Grid")
-                KeyHint(keys: ["F"], label: "Full screen")
                 KeyHint(keys: ["?"], label: "Shortcuts")
             }
             .padding(.top, 6)
@@ -65,18 +78,39 @@ struct EmptyStateView: View {
         .padding(40)
     }
 
-    private var isFolderWithoutImages: Bool {
-        model.source != nil
+    private var symbol: String {
+        if model.filterHidesAll { return "line.3.horizontal.decrease.circle" }
+        switch model.source {
+        case .smart(.starred): return "star"
+        case .smart(.tag): return "tag"
+        case nil: return "photo.stack"
+        default: return "photo.badge.exclamationmark"
+        }
     }
 
     private var title: String {
-        isFolderWithoutImages ? "No images, videos or documents in “\(model.collectionName)”" : "Drop images or a folder here"
+        if model.filterHidesAll {
+            return "No \(model.filter.title.lowercased()) in “\(model.collectionName)”"
+        }
+        switch model.source {
+        case .smart(.starred): return "No starred files"
+        case .smart(.tag(let name)): return "No files with the tag “\(name)”"
+        case nil: return "Drop images or a folder here"
+        default: return "No images, videos or documents in “\(model.collectionName)”"
+        }
     }
 
     private var subtitle: String {
-        isFolderWithoutImages
-            ? "Glimpse shows JPEG, PNG, HEIC, GIF, WebP, TIFF, RAW, MOV, MP4, PDF, Word, Excel and more."
-            : "Open one image and browse the whole folder with the arrow keys."
+        if model.filterHidesAll {
+            let count = model.allItems.count
+            return count == 1 ? "The filter hides the only file here." : "The filter hides all \(count) files here."
+        }
+        switch model.source {
+        case .smart(.starred): return "Press S to star a file. Starred files from all folders show here."
+        case .smart(.tag): return "Press 1 to 5 to tag a file. Glimpse looks for tags in the workspace folders."
+        case nil: return "Open one image and browse the whole folder with the arrow keys."
+        default: return "Glimpse shows JPEG, PNG, HEIC, GIF, WebP, TIFF, RAW, MOV, MP4, PDF, Word, Excel and more."
+        }
     }
 }
 
