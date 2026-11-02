@@ -32,6 +32,8 @@ final class ImageCanvasView: NSScrollView {
     private(set) var isFitMode = true
 
     private var dragStart: (location: NSPoint, origin: NSPoint)?
+    /// The mouse-down event of a press that drags the file out when the pointer moves.
+    private var fileDragEvent: NSEvent?
     private var swipeDistance: CGFloat = 0
     private var swipeConsumed = false
     private var showsHandCursor = false
@@ -323,20 +325,34 @@ final class ImageCanvasView: NSScrollView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        fileDragEvent = nil
         if event.clickCount >= 2 {
             toggleZoom(around: imageView.convert(event.locationInWindow, from: nil))
             return
         }
-        if canPan {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if canPan && !flags.contains(.command) {
             stopZoomAnimation()
             dragStart = (event.locationInWindow, centeringClipView.bounds.origin)
             NSCursor.closedHand.set()
+        } else if isOverImage(event) {
+            // A drag on the image that fits, or a ⌘-drag on a zoomed image, takes the file to another app.
+            fileDragEvent = event
         } else if let window, !window.styleMask.contains(.fullScreen) {
             window.performDrag(with: event)
         }
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if let down = fileDragEvent {
+            let distance = hypot(event.locationInWindow.x - down.locationInWindow.x,
+                                 event.locationInWindow.y - down.locationInWindow.y)
+            if distance > 3 {
+                fileDragEvent = nil
+                beginFileDrag(with: event)
+            }
+            return
+        }
         guard let start = dragStart else { return }
         let scale = magnification
         var origin = start.origin
@@ -348,6 +364,7 @@ final class ImageCanvasView: NSScrollView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        fileDragEvent = nil
         guard dragStart != nil else { return }
         dragStart = nil
         updateCursor(for: event)
@@ -403,6 +420,36 @@ final class ImageCanvasView: NSScrollView {
             swipeConsumed = true
             canvasDelegate?.canvasRequestsNavigation(by: swipeDistance < 0 ? 1 : -1)
         }
+    }
+
+    // MARK: - Drag out
+
+    /// The part of the canvas that shows the image.
+    private var imageRect: NSRect {
+        convert(imageView.bounds, from: imageView).intersection(bounds)
+    }
+
+    private func isOverImage(_ event: NSEvent) -> Bool {
+        identity != nil && imageRect.contains(convert(event.locationInWindow, from: nil))
+    }
+
+    private func beginFileDrag(with event: NSEvent) {
+        guard let url = identity?.url, let image = imageView.image else { return }
+        let item = NSDraggingItem(pasteboardWriter: url as NSURL)
+        item.setDraggingFrame(dragFrame(around: convert(event.locationInWindow, from: nil)),
+                              contents: NSImage(cgImage: image, size: .zero))
+        OutgoingDrag.begin([url])
+        let session = beginDraggingSession(with: [item], event: event, source: self)
+        session.animatesToStartingPositionsOnCancelOrFail = true
+    }
+
+    /// The image on screen, made smaller around the pointer when it is large.
+    private func dragFrame(around point: NSPoint) -> NSRect {
+        let rect = imageRect
+        let scale = min(1, 240 / max(rect.width, rect.height, 1))
+        return NSRect(x: point.x - (point.x - rect.minX) * scale,
+                      y: point.y - (point.y - rect.minY) * scale,
+                      width: rect.width * scale, height: rect.height * scale)
     }
 
     override func updateTrackingAreas() {
@@ -478,7 +525,7 @@ final class CenteringClipView: NSClipView {
 
 /// Shows the image as layer contents, so the GPU scales it while zooming.
 final class ImageDocumentView: NSView {
-    private var image: CGImage?
+    private(set) var image: CGImage?
     private var animatedView: NSImageView?
 
     var usesNearestNeighbor = false {
@@ -534,4 +581,16 @@ final class ImageDocumentView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+extension ImageCanvasView: NSDraggingSource {
+    func draggingSession(_ session: NSDraggingSession,
+                         sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        // Copy only, so a drop in Finder never moves the file out of its folder.
+        .copy
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        OutgoingDrag.end()
+    }
 }

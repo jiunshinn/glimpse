@@ -330,11 +330,14 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             let count = board?.items.count ?? 0
             window.subtitle = count == 1 ? "1 item" : "\(count) items"
             window.tab.title = window.title
+            window.representedURL = nil
         } else {
             window.title = model.windowTitle
             window.subtitle = model.windowSubtitle
             // The tab bar shows the folder, not the file.
             window.tab.title = model.collectionName
+            // The icon next to the title. Drag it to take the file to another app.
+            window.representedURL = model.isGridMode ? nil : model.current?.url
         }
         let isGrid = model.isGridMode
         let showInfo = model.showInfo

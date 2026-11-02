@@ -324,9 +324,19 @@ final class ViewerModel {
     }
 
     func handleDrop(_ urls: [URL]) -> Bool {
+        // A file that is dragged from this tab and dropped on it again does not open again.
+        if OutgoingDrag.carries(urls) {
+            OutgoingDrag.end()
+            if containsAll(urls) { return false }
+        }
         guard let request = OpenRequest.make(from: urls).first else { return false }
         open(request)
         return true
+    }
+
+    /// True if all the files are in this tab.
+    func containsAll(_ urls: [URL]) -> Bool {
+        urls.allSatisfy { url in allItems.contains { $0.url.isSameFile(as: url) } }
     }
 
     /// Scans the source again and keeps the current image selected if it still exists.

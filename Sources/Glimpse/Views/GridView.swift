@@ -22,6 +22,7 @@ struct GridView: View {
                                 .id(item.id)
                                 .onTapGesture(count: 2) { model.openViewer(at: offset) }
                                 .simultaneousGesture(TapGesture().onEnded { model.go(to: offset) })
+                                .onDrag { OutgoingDrag.itemProvider(for: item.url) }
                         }
                     }
                     .padding(.horizontal, padding)
