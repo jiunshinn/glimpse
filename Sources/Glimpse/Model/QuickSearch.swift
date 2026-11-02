@@ -40,6 +40,11 @@ final class QuickSearchModel {
         let subtitle: String
         let accessory: String
         fileprivate let score: Int
+
+        /// What VoiceOver reads for the result, for example "beach.jpg, Photos".
+        var spokenDescription: String {
+            [title, subtitle].filter { !$0.isEmpty }.joined(separator: ", ")
+        }
     }
 
     struct Group: Identifiable {
@@ -81,6 +86,10 @@ final class QuickSearchModel {
     func moveSelection(by delta: Int) {
         guard !results.isEmpty else { return }
         selection = (selection + delta + results.count) % results.count
+        // The keyboard focus stays in the search field, so VoiceOver reads the new result.
+        if let selected {
+            Accessibility.announce("\(selected.spokenDescription), \(selection + 1) of \(results.count)")
+        }
     }
 
     func activate(_ index: Int? = nil, modifiers: NSEvent.ModifierFlags = []) {

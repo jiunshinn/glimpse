@@ -13,6 +13,7 @@ struct QuickSearchView: View {
             Color.black.opacity(0.32)
                 .contentShape(Rectangle())
                 .onTapGesture { search.hide() }
+                .accessibilityHidden(true)
 
             VStack(spacing: 0) {
                 field
@@ -35,6 +36,10 @@ struct QuickSearchView: View {
             .shadow(color: .black.opacity(0.5), radius: 40, y: 20)
             .padding(.horizontal, 24)
             .padding(.top, topInset + 28)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Quick Search")
+            .accessibilityAddTraits(.isModal)
+            .accessibilityAction(.escape) { search.hide() }
         }
         .onAppear {
             // The field can take the focus only after the panel is in the window.
@@ -47,10 +52,13 @@ struct QuickSearchView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             TextField(placeholder, text: $search.query)
                 .textFieldStyle(.plain)
                 .font(.system(size: 19))
                 .focused($isFieldFocused)
+                .accessibilityLabel(modeLabel.map { "Quick Search, \($0)" } ?? "Quick Search")
+                .accessibilityHint("Up and Down Arrow choose a result. Return opens it.")
             if let mode = modeLabel {
                 Text(mode)
                     .font(.system(size: 11, weight: .semibold))
@@ -82,6 +90,7 @@ struct QuickSearchView: View {
                             Text(group.title)
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.tertiary)
+                                .accessibilityAddTraits(.isHeader)
                                 .padding(.horizontal, 12)
                                 .padding(.top, 12)
                                 .padding(.bottom, 4)
@@ -93,6 +102,11 @@ struct QuickSearchView: View {
                                         search.selection = index
                                         search.activate(index, modifiers: NSEvent.modifierFlags)
                                     }
+                                    .accessibilityElement(children: .ignore)
+                                    .accessibilityLabel(result.title)
+                                    .accessibilityValue(result.subtitle)
+                                    .accessibilityAddTraits(index == search.selection ? [.isButton, .isSelected] : .isButton)
+                                    .accessibilityAction { search.activate(index) }
                             }
                         }
                     }
@@ -104,6 +118,12 @@ struct QuickSearchView: View {
             .onChange(of: search.selection) { _, _ in
                 guard let id = search.selected?.id else { return }
                 proxy.scrollTo(id)
+            }
+            .onChange(of: search.query) { _, _ in
+                // VoiceOver users cannot see the list change while they type. A low priority does not cut off the typing echo.
+                let count = search.results.count
+                let first = search.selected.map { ". \($0.spokenDescription)" } ?? ""
+                Accessibility.announce(count == 1 ? "1 result\(first)" : "\(count) results\(first)", priority: .low)
             }
         }
     }
@@ -127,6 +147,8 @@ struct QuickSearchView: View {
         .font(.system(size: 12))
         .padding(.horizontal, 16)
         .frame(height: 42)
+        // The field hint and the actions of each result say the same.
+        .accessibilityHidden(true)
     }
 
     private var placeholder: String {
@@ -388,8 +410,11 @@ private struct QuickSearchPreview: View {
         Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 5) {
             ForEach(rows, id: \.0) { label, value in
                 GridRow {
+                    // VoiceOver reads each row as one element, for example "Size: 26 MB".
                     Text(label).foregroundStyle(.tertiary)
+                        .accessibilityLabel("\(label): \(value)")
                     Text(value).lineLimit(2).truncationMode(.middle)
+                        .accessibilityHidden(true)
                 }
             }
         }

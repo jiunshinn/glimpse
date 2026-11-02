@@ -61,6 +61,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                         NSApp.postEvent(event, atStart: false)
                         return
                     }
+                    if command == "responder" {
+                        NSLog("GLIMPSE fka=%d responder=%@ controlFocus=%d", NSApp.isFullKeyboardAccessEnabled ? 1 : 0,
+                              String(describing: controller.window?.firstResponder), model.controlHasKeyboardFocus ? 1 : 0)
+                        return
+                    }
                     if command == "log" {
                         NSLog("GLIMPSE query=%@ stars=%d", controller.tab.quickSearch.query, workspace.stars.count)
                         return

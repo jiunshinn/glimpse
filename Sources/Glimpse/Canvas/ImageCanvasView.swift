@@ -41,6 +41,11 @@ final class ImageCanvasView: NSScrollView {
     private var zoomAnimation: ZoomAnimation?
     private var displayLink: CADisplayLink?
 
+    /// What VoiceOver reads for the image: the name, the position and a description.
+    var accessibilityText = ""
+    /// The commands that VoiceOver offers in its Actions menu, for example "Next Image" and "Zoom In".
+    var accessibilityCommands: [(name: String, perform: () -> Void)] = []
+
     private struct ZoomAnimation {
         let from: CGFloat
         let to: CGFloat
@@ -229,6 +234,13 @@ final class ImageCanvasView: NSScrollView {
 
     private func animateMagnification(to target: CGFloat, around anchor: NSPoint) {
         minMagnification = min(minMagnification, target)
+        if Accessibility.reduceMotion {
+            stopZoomAnimation()
+            setMagnification(target, centeredAt: anchor)
+            if isFitMode { clampVisibleRect() }
+            zoomSettled()
+            return
+        }
         zoomAnimation = ZoomAnimation(from: magnification, to: target, anchor: anchor,
                                       start: CACurrentMediaTime(), duration: 0.22)
         if displayLink == nil {
@@ -474,6 +486,30 @@ final class ImageCanvasView: NSScrollView {
 
     override func mouseExited(with event: NSEvent) {
         canvasDelegate?.canvasPointerExited()
+    }
+
+    // MARK: - Accessibility
+
+    override func isAccessibilityElement() -> Bool { identity != nil }
+    override func accessibilityRole() -> NSAccessibility.Role? { .image }
+    override func accessibilityLabel() -> String? { accessibilityText }
+
+    override func accessibilityValue() -> Any? {
+        guard identity != nil else { return nil }
+        let percent = Int((pixelRatio * 100).rounded())
+        return isFitMode ? "Zoom to fit, \(percent)%" : "Zoom \(percent)%"
+    }
+
+    /// The image is one element. VoiceOver does not need the clip view or the image view in it.
+    override func accessibilityChildren() -> [Any]? { [] }
+
+    override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
+        accessibilityCommands.map { command in
+            NSAccessibilityCustomAction(name: command.name) {
+                command.perform()
+                return true
+            }
+        }
     }
 
     private func updateCursor(for event: NSEvent) {

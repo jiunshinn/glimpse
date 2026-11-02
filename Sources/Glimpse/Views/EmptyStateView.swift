@@ -3,6 +3,7 @@ import SwiftUI
 struct EmptyStateView: View {
     let model: ViewerModel
     let isDropTargeted: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -32,9 +33,10 @@ struct EmptyStateView: View {
                     .foregroundStyle(
                         LinearGradient(colors: [.white, .white.opacity(0.55)], startPoint: .top, endPoint: .bottom)
                     )
-                    .symbolEffect(.bounce, value: isDropTargeted)
+                    .symbolEffect(.bounce, value: reduceMotion ? false : isDropTargeted)
             }
-            .scaleEffect(isDropTargeted ? 1.06 : 1)
+            .scaleEffect(isDropTargeted && !reduceMotion ? 1.06 : 1)
+            .accessibilityHidden(true)
 
             VStack(spacing: 7) {
                 Text(title)
@@ -44,6 +46,7 @@ struct EmptyStateView: View {
                     .foregroundStyle(.secondary)
             }
             .multilineTextAlignment(.center)
+            .accessibilityElement(children: .combine)
 
             if model.filterHidesAll {
                 Button {
@@ -54,6 +57,7 @@ struct EmptyStateView: View {
                 }
                 .prominentGlassButtonStyle()
                 .controlSize(.large)
+                .reportsKeyboardFocus(to: model)
             } else if model.source == nil {
                 Button {
                     NSApp.sendAction(#selector(AppDelegate.openDocument(_:)), to: nil, from: nil)
@@ -63,6 +67,7 @@ struct EmptyStateView: View {
                 }
                 .prominentGlassButtonStyle()
                 .controlSize(.large)
+                .reportsKeyboardFocus(to: model)
             }
 
             HStack(spacing: 18) {
@@ -127,6 +132,8 @@ struct KeyHint: View {
                 .font(.system(size: 11.5))
                 .foregroundStyle(.secondary)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(keys.map(ShortcutsOverlay.spokenKeys).joined(separator: ", "))")
     }
 }
 

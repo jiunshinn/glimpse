@@ -4,6 +4,7 @@ import SwiftUI
 struct TabContentView: View {
     let model: ViewerModel
     let tab: TabState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -15,7 +16,7 @@ struct TabContentView: View {
 
             if tab.quickSearch.isVisible {
                 QuickSearchView(search: tab.quickSearch, topInset: model.topInset)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+                    .transition(.motion(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)), reduceMotion: reduceMotion))
             }
         }
         .ignoresSafeArea()

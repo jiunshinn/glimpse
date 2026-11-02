@@ -3,18 +3,19 @@ import SwiftUI
 /// Round previous/next buttons that appear when the pointer is near the left or right edge.
 struct EdgeNavigationView: View {
     let model: ViewerModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let insets = model.canvasInsets
         HStack {
             if model.hoverEdge == .leading && model.index > 0 {
-                NavigationButton(symbol: "chevron.left", help: "Previous (←)") { model.previous() }
-                    .transition(.opacity.combined(with: .move(edge: .leading)))
+                NavigationButton(symbol: "chevron.left", label: "Previous", help: "Previous (←)") { model.previous() }
+                    .transition(.motion(.opacity.combined(with: .move(edge: .leading)), reduceMotion: reduceMotion))
             }
             Spacer(minLength: 0)
             if model.hoverEdge == .trailing && model.index < model.items.count - 1 {
-                NavigationButton(symbol: "chevron.right", help: "Next (→)") { model.next() }
-                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+                NavigationButton(symbol: "chevron.right", label: "Next", help: "Next (→)") { model.next() }
+                    .transition(.motion(.opacity.combined(with: .move(edge: .trailing)), reduceMotion: reduceMotion))
             }
         }
         .padding(.horizontal, 20)
@@ -27,6 +28,7 @@ struct EdgeNavigationView: View {
 
 private struct NavigationButton: View {
     let symbol: String
+    let label: String
     let help: String
     let action: () -> Void
 
@@ -40,11 +42,13 @@ private struct NavigationButton: View {
         .buttonStyle(.plain)
         .glassSurface(Circle(), interactive: true)
         .help(help)
+        .accessibilityLabel(label)
     }
 }
 
 struct ToastLayer: View {
     let model: ViewerModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack {
@@ -62,7 +66,7 @@ struct ToastLayer: View {
                 .padding(.vertical, 9)
                 .glassSurface(Capsule())
                 .id(toast.id)
-                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                .transition(.motion(.opacity.combined(with: .scale(scale: 0.92)), reduceMotion: reduceMotion))
             }
             Spacer()
         }
@@ -70,10 +74,13 @@ struct ToastLayer: View {
         .padding(.trailing, model.canvasInsets.right)
         .animation(.smooth(duration: 0.2), value: model.toast)
         .allowsHitTesting(false)
+        // VoiceOver reads each toast as an announcement. See `ViewerModel.showToast`.
+        .accessibilityHidden(true)
     }
 }
 
 struct ShortcutsOverlay: View {
+    let topInset: CGFloat
     let dismiss: () -> Void
 
     private let groups: [(String, [(String, String)])] = [
@@ -129,6 +136,12 @@ struct ShortcutsOverlay: View {
             ("+ −  Z", "Zoom a PDF"),
             ("R", "Rotate a PDF (⇧ for left)"),
         ]),
+        ("Board", [
+            ("Tab", "Select the next item (⇧ for previous)"),
+            ("← → ↑ ↓", "Move the item (⇧ for 10 points)"),
+            ("+ −", "Make the item larger / smaller"),
+            ("Return", "Open the file or edit the note"),
+        ]),
     ]
 
     var body: some View {
@@ -136,36 +149,74 @@ struct ShortcutsOverlay: View {
             Color.black.opacity(0.35)
                 .contentShape(Rectangle())
                 .onTapGesture(perform: dismiss)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 20) {
                 HStack {
                     Text("Keyboard Shortcuts")
                         .font(.system(size: 17, weight: .semibold))
+                        .accessibilityAddTraits(.isHeader)
                     Spacer()
                     KeyCap("?")
+                        .accessibilityHidden(true)
                 }
-                Grid(alignment: .topLeading, horizontalSpacing: 36, verticalSpacing: 20) {
-                    GridRow {
-                        group(0)
-                        group(1)
-                    }
-                    GridRow {
-                        group(4)
-                        group(6)
-                    }
-                    GridRow {
-                        group(5)
-                        VStack(alignment: .leading, spacing: 20) {
-                            group(2)
-                            group(3)
-                        }
-                    }
+                // A small window scrolls the list.
+                ViewThatFits(in: .vertical) {
+                    groupGrid
+                    ScrollView { groupGrid }
+                        .scrollIndicators(.automatic)
                 }
             }
             .padding(26)
             .frame(width: 640)
             .glassSurface(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .accessibilityElement(children: .contain)
+            .accessibilityAddTraits(.isModal)
+            .accessibilityAction(.escape, dismiss)
+            .padding(.top, topInset + 12)
+            .padding(.bottom, 12)
         }
+    }
+
+    private var groupGrid: some View {
+        Grid(alignment: .topLeading, horizontalSpacing: 36, verticalSpacing: 20) {
+            GridRow {
+                group(0)
+                group(1)
+            }
+            GridRow {
+                group(4)
+                VStack(alignment: .leading, spacing: 20) {
+                    group(6)
+                    group(7)
+                }
+            }
+            GridRow {
+                group(5)
+                VStack(alignment: .leading, spacing: 20) {
+                    group(2)
+                    group(3)
+                }
+            }
+        }
+    }
+
+    /// VoiceOver reads many key symbols badly, for example "⌘" and "⌫". Give them names.
+    static func spokenKeys(_ keys: String) -> String {
+        let names: [Character: String] = [
+            "⌘": "Command ", "⇧": "Shift ", "⌥": "Option ", "⌃": "Control ", "⌫": "Delete",
+            "←": "Left Arrow", "→": "Right Arrow", "↑": "Up Arrow", "↓": "Down Arrow", "↵": "Return",
+            "−": "Minus", "–": " to ",
+        ]
+        var text = ""
+        for character in keys {
+            if let name = names[character] {
+                text += name
+            } else {
+                text.append(character)
+            }
+        }
+        return text.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
     }
 
     private func group(_ index: Int) -> some View {
@@ -175,6 +226,8 @@ struct ShortcutsOverlay: View {
                 .font(.system(size: 10.5, weight: .semibold))
                 .tracking(0.8)
                 .foregroundStyle(.tertiary)
+                .accessibilityLabel(title)
+                .accessibilityAddTraits(.isHeader)
             ForEach(rows, id: \.0) { key, description in
                 HStack(spacing: 10) {
                     Text(key)
@@ -184,6 +237,8 @@ struct ShortcutsOverlay: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(description): \(Self.spokenKeys(key))")
             }
         }
     }

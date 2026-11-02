@@ -6,6 +6,7 @@ struct GridView: View {
     private let spacing: CGFloat = 14
     private let padding: CGFloat = 22
     @State private var pinch = Pinch()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { proxy in
@@ -18,13 +19,17 @@ struct GridView: View {
                     LazyVGrid(columns: Array(repeating: GridItem(.fixed(tile), spacing: spacing), count: columns),
                               spacing: spacing + 4) {
                         ForEach(Array(model.items.enumerated()), id: \.element.id) { offset, item in
+                            let marks = FileMarks(item.url)
                             GridCell(item: item, isSelected: offset == model.index, size: tile,
-                                     marks: FileMarks(item.url), onHover: { pinch.hoveredID = item.id })
+                                     marks: marks, onHover: { pinch.hoveredID = item.id })
                                 .id(item.id)
                                 .onTapGesture(count: 2) { model.openViewer(at: offset) }
                                 .simultaneousGesture(TapGesture().onEnded { model.go(to: offset) })
                                 .onDrag { OutgoingDrag.itemProvider(for: item.url) }
                                 .contextMenu { FileContextMenu(model: model, url: item.url) }
+                                .fileAccessibility(item, marks: marks, isSelected: offset == model.index, model: model) {
+                                    model.openViewer(at: offset)
+                                }
                         }
                     }
                     .padding(.horizontal, padding)
@@ -33,6 +38,7 @@ struct GridView: View {
                     .padding(.trailing, model.showInfo ? Layout.infoPanelWidth + Layout.panelMargin : 0)
                 }
                 .scrollIndicators(.automatic)
+                .accessibilityLabel(model.collectionName)
                 .gesture(pinchGesture)
                 .onAppear {
                     model.gridColumns = columns
@@ -47,7 +53,7 @@ struct GridView: View {
                 }
                 .onChange(of: model.current?.id) { _, id in
                     guard let id else { return }
-                    withAnimation(.smooth(duration: 0.2)) { scroller.scrollTo(id) }
+                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) { scroller.scrollTo(id) }
                 }
             }
         }
@@ -126,6 +132,7 @@ private struct GridCell: View {
     let onHover: () -> Void
 
     @State private var isHovered = false
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         VStack(spacing: 8) {
@@ -138,7 +145,7 @@ private struct GridCell: View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.accentColor.opacity(isSelected ? 0.9 : 0), lineWidth: 2)
+                        .strokeBorder(Color.accentColor.opacity(isSelected ? 0.9 : 0), lineWidth: contrast == .increased ? 3 : 2)
                 }
                 .overlay(alignment: .topLeading) { leadingMarks }
                 .overlay(alignment: .topTrailing) { tagDots }

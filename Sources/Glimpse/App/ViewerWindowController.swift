@@ -96,6 +96,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         }
         window.toolbar = viewerToolbar
         window.contentViewController = splitController
+        // The arrow keys browse the files at once. The sidebar gets the keys only after a click or Tab.
+        window.initialFirstResponder = content.view
         filterMenu.delegate = self
 
         placeWindow(window, after: previous, frame: frame)
@@ -415,10 +417,14 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         ) { [weak self] event in
             let location = event.locationInWindow
             let window = event.window
+            let isClick = event.type == .leftMouseDown
             MainActor.assumeIsolated {
-                guard let self, window === self.window, self.tab.boardID == nil else { return }
+                guard let self, window === self.window else { return }
                 let view = self.contentView
                 let point = view.convert(location, from: nil)
+                // A click on the image or the board takes the keys back from the sidebar.
+                if isClick, view.bounds.contains(point) { self.focusContent() }
+                guard self.tab.boardID == nil else { return }
                 // The pointer over the sidebar is not near the left edge of the image.
                 guard view.bounds.contains(point) else {
                     self.model.pointerExited()
@@ -436,11 +442,40 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.function, .numericPad, .capsLock])
     }
 
+    /// Moves the keyboard focus from the sidebar or a toolbar button to the viewer or the board.
+    @discardableResult
+    func focusContent() -> Bool {
+        guard focusIsOutsideContent, let window else { return false }
+        if !window.makeFirstResponder(contentView) { window.makeFirstResponder(nil) }
+        return true
+    }
+
+    /// The keys that move in a list or press a control.
+    private static let controlKeys: Set<Int> = [
+        kVK_LeftArrow, kVK_RightArrow, kVK_UpArrow, kVK_DownArrow, kVK_Space, kVK_Return, kVK_ANSI_KeypadEnter, kVK_Tab,
+    ]
+
+    /// True when the sidebar, a toolbar button or a button in the viewer has the keyboard focus.
+    /// For example, ↑ ↓ choose a sidebar row. With Full Keyboard Access, Space presses the focused button.
+    private func focusedControlTakesKeys(_ event: NSEvent) -> Bool {
+        guard Self.controlKeys.contains(Int(event.keyCode)) else { return false }
+        if tab.boardID == nil && model.controlHasKeyboardFocus { return true }
+        return focusIsOutsideContent
+    }
+
+    private var focusIsOutsideContent: Bool {
+        guard let responder = window?.firstResponder as? NSView else { return false }
+        return !responder.isDescendant(of: contentView)
+    }
+
     /// Single keys without ⌘. Commands with ⌘ go through the menus.
     private func handleKeyDown(_ event: NSEvent) -> Bool {
         if tab.quickSearch.isVisible { return handleQuickSearchKey(event) }
         // A text field gets all keys, for example the password field of a locked PDF or a note on a board.
         if let text = window?.firstResponder as? NSText, text.isEditable { return false }
+        if focusedControlTakesKeys(event) { return false }
+        // Esc in the sidebar gives the keys back to the viewer.
+        if Int(event.keyCode) == kVK_Escape, focusContent() { return true }
         let flags = modifiers(of: event)
         guard flags.isDisjoint(with: [.command, .control, .option]) else { return false }
         let shift = flags.contains(.shift)
@@ -547,7 +582,26 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     private func handleBoardKey(_ event: NSEvent) -> Bool {
+        let shift = modifiers(of: event).contains(.shift)
+        // ⇧ moves by a larger step, as in other drawing apps.
+        let step: Double = shift ? 10 : 1
         switch Int(event.keyCode) {
+        case kVK_Tab:
+            return selectNextBoardItem(backward: shift)
+        case kVK_LeftArrow: return moveBoardSelection(dx: -step, dy: 0)
+        case kVK_RightArrow: return moveBoardSelection(dx: step, dy: 0)
+        case kVK_UpArrow: return moveBoardSelection(dx: 0, dy: -step)
+        case kVK_DownArrow: return moveBoardSelection(dx: 0, dy: step)
+        case kVK_Return, kVK_ANSI_KeypadEnter:
+            guard let id = tab.boardID, let selection = tab.boardSelection,
+                  let item = Workspace.shared.board(id)?.items.first(where: { $0.id == selection }) else { return false }
+            if item.isNote {
+                tab.focusedNote = item.id
+            } else if let url = item.url {
+                openFromBoard(url)
+            }
+        case kVK_ANSI_Equal, kVK_ANSI_KeypadPlus: return resizeBoardSelection(by: 1.1)
+        case kVK_ANSI_Minus, kVK_ANSI_KeypadMinus: return resizeBoardSelection(by: 1 / 1.1)
         case kVK_Delete, kVK_ForwardDelete:
             guard let id = tab.boardID, let selection = tab.boardSelection else { return false }
             Workspace.shared.removeItem(selection, from: id)
@@ -564,6 +618,44 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             guard KeyboardLayout.character(for: event) == "f" else { return false }
             window?.toggleFullScreen(nil)
         }
+        return true
+    }
+
+    /// Tab selects the next item on the board, in reading order. After the last item, Tab goes on to the next control.
+    private func selectNextBoardItem(backward: Bool) -> Bool {
+        guard let id = tab.boardID, let board = Workspace.shared.board(id), !board.items.isEmpty else { return false }
+        let ordered = board.items.sorted { ($0.y, $0.x) < ($1.y, $1.x) }
+        let current = tab.boardSelection.flatMap { selection in ordered.firstIndex { $0.id == selection } }
+        let next: Int
+        switch (current, backward) {
+        case (nil, false): next = 0
+        case (nil, true): next = ordered.count - 1
+        case (let index?, false): next = index + 1
+        case (let index?, true): next = index - 1
+        }
+        guard ordered.indices.contains(next) else {
+            tab.boardSelection = nil
+            return false
+        }
+        let item = ordered[next]
+        tab.boardSelection = item.id
+        Workspace.shared.bringToFront(item.id, in: id)
+        Accessibility.announce("\(BoardItemAccessibility.label(item)), \(next + 1) of \(ordered.count)")
+        return true
+    }
+
+    private func moveBoardSelection(dx: Double, dy: Double) -> Bool {
+        guard let id = tab.boardID, let selection = tab.boardSelection else { return false }
+        Workspace.shared.updateItem(selection, in: id) {
+            $0.x = max(0, $0.x + dx)
+            $0.y = max(0, $0.y + dy)
+        }
+        return true
+    }
+
+    private func resizeBoardSelection(by factor: Double) -> Bool {
+        guard let id = tab.boardID, let selection = tab.boardSelection else { return false }
+        Workspace.shared.updateItem(selection, in: id) { $0.width = BoardItemAccessibility.clampedWidth($0.width * factor) }
         return true
     }
 
@@ -676,7 +768,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     @objc func arrangeBoard(_ sender: Any?) {
         guard let id = tab.boardID else { return }
         let width = tab.boardViewportWidth
-        withAnimation(.smooth(duration: 0.35)) {
+        withAnimation(Accessibility.reduceMotion ? nil : .smooth(duration: 0.35)) {
             Workspace.shared.arrange(id, width: width)
         }
     }
@@ -877,7 +969,9 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         case .info:
             return button(identifier, "Info", "info.circle", #selector(toggleInfo(_:)))
         case .search:
-            return button(identifier, "Quick Search (⌘K)", "magnifyingglass", #selector(showQuickSearch(_:)))
+            let item = button(identifier, "Quick Search", "magnifyingglass", #selector(showQuickSearch(_:)))
+            item.toolTip = "Quick Search (⌘K)"
+            return item
         case .addFiles:
             return button(identifier, "Add Files", "plus.rectangle.on.rectangle", #selector(addFilesToBoard(_:)))
         case .addNote:
@@ -1004,7 +1098,7 @@ extension ViewerWindowController {
             "home": (kVK_Home, NSHomeFunctionKey), "end": (kVK_End, NSEndFunctionKey), "space": (kVK_Space, 0x20),
             "return": (kVK_Return, 0x0D), "escape": (kVK_Escape, 0x1B), "delete": (kVK_Delete, 0x7F),
             "s": (kVK_ANSI_S, 0x73), "b": (kVK_ANSI_B, 0x62), "1": (kVK_ANSI_1, 0x31), "2": (kVK_ANSI_2, 0x32),
-            "p": (kVK_ANSI_P, 0x70),
+            "p": (kVK_ANSI_P, 0x70), "tab": (kVK_Tab, 0x09), "=": (kVK_ANSI_Equal, 0x3D),
         ]
         let shift = name.hasPrefix("shift+")
         guard let window, let key = keys[shift ? String(name.dropFirst(6)) : name],

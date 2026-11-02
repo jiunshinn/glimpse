@@ -37,7 +37,7 @@ Glimpse fixes this. Double-click a file (or choose **Open With ▸ Glimpse**), a
 - **Modern UI**: Liquid Glass on macOS 26 (translucent materials on macOS 14–15), a blurred ambient background from the current image, and full screen with controls that hide.
 - **Videos**: MOV, MP4, M4V and other files that macOS can play show in the same folder sequence, with the system player controls. Seek, step by frame, change the speed and the volume from the keyboard, loop, and use picture in picture. A long video starts again where you stopped it. Thumbnails show the duration.
 - **Documents**: PDF, Word (DOCX, DOC), Excel (XLSX, XLS, CSV), PowerPoint (PPTX, PPT), Pages, Numbers, Keynote, RTF and OpenDocument files show in the same folder sequence. PDFs open with PDFKit: the whole page fits, and you can scroll, zoom, rotate, select text and unlock a protected file. Other documents show with Quick Look, so you do not need Office or iWork. Spreadsheets keep their sheet tabs.
-- **Info panel**: dimensions, color profile, camera, lens, exposure, date taken and GPS location (press **I**). For videos: duration, frame rate, codec, HDR, bit rate and audio. For documents: pages, page size, title, author and the app that made the file.
+- **Info panel**: dimensions, color profile, camera, lens, exposure, date taken and GPS location (press **I**). For videos: duration, frame rate, codec, HDR, bit rate and audio. For documents: pages, page size, title, author and the app that made the file. For images, a **Description** section shows what Vision finds in the image: things (for example "dog, grass, outdoor"), the number of faces and the text.
 - **Clean up a folder**: ⌘⌫ moves the file to the Trash and shows the next one. ⌘Z puts it back.
 - **Live folder**: new, removed and renamed files show up at once.
 - **Sort**: by name, date modified, date created or size, ascending or descending. Pinned files come first in every sort order (see **Pins** under [Workspace](#workspace)).
@@ -126,12 +126,22 @@ In a new tab, ↵ opens the result in that tab. In **Add Files to Board** mode, 
   - Press **⌥↵** on a file in Quick Search.
   - Drop files from Finder on the board. They go where you drop them.
 - Drag an item to move it. Click an item to select it, then drag the circle at its corner to resize it. The selected item comes to the front.
+- With the keyboard: **Tab** selects the next item (⇧Tab the previous item), the arrow keys move it, **+** and **−** resize it, and **↵** opens the file or edits the note. After the last item, Tab goes on to the next control.
 - Double-click a file to open it in the viewer. A tab that shows its folder already opens it.
 - **Add Note** in the toolbar puts a note on the board. Type in the note. Drag the bar at the top of the note to move it.
 - **Arrange** puts all items in rows that fit the width of the window.
 - **⌫** removes the selected item. **Esc** clears the selection. The file stays in its folder.
 - A file that was moved or deleted shows "Glimpse can’t find this file".
 - Right-click a board in the sidebar to rename or delete it. Deleting a board does not change the files.
+
+### Accessibility
+
+- **VoiceOver**: every file in the grid, the filmstrip and on a board is one element with its name, its kind and its marks (for example "beach.jpg, JPG image, starred, tags: Keep"). The image is one element with its name, its position, its zoom and a description. The VoiceOver Actions menu (VO-⌘-Space) has the commands of the context menu: Star, Pin to Top, Show in Finder, and for the image Next Image, Zoom In, Rotate Right and more. The arrow keys do not move the VoiceOver cursor, so VoiceOver reads the name and the position of each new file, the Quick Search result that you choose, and each status message (for example "Starred" or "Last image").
+- **Image descriptions**: while VoiceOver is on or the info panel shows, Vision describes the current image on your Mac: the things in it, the number of faces and the text in it. VoiceOver reads the description after the name of the file. Nothing leaves your Mac.
+- **Full Keyboard Access**: Tab moves the focus to the sidebar, the toolbar and the buttons. While the sidebar has the focus, ↑ ↓ choose a row. While a button has the focus, Space presses it. A click on the image, the grid or the board gives the keys back to the viewer. Boards work without a mouse (see [Boards](#boards)).
+- **Reduce Motion**: panels, the grid and overlays fade in and out but do not slide or grow. Zoom steps go to the new size at once, and the grid and the filmstrip do not scroll with an animation.
+- **Reduce Transparency**: the glass panels (filmstrip, info panel, toasts, Quick Search, the shortcut list) become solid.
+- **Increase Contrast**: the glass panels get a clear border, the selected grid cell gets a thicker border, and the filmstrip shows the other thumbnails brighter.
 
 ## Requirements
 
@@ -238,6 +248,10 @@ On a board:
 
 | Key | Action |
 | --- | --- |
+| Tab / ⇧Tab | Select the next / previous item |
+| ← → ↑ ↓ | Move the selected item by 1 point (⇧: 10 points) |
+| + / − | Make the selected item larger / smaller |
+| ↵ | Open the selected file, or edit the selected note |
 | ⌫ | Remove the selected item from the board |
 | Esc | Clear the selection (then: exit full screen) |
 | F | Full screen |
@@ -424,6 +438,7 @@ Sources/Glimpse
 - Videos play with AVKit's `AVPlayerView`. One `AVPlayer` serves a window, so the volume and the speed stay the same from video to video. Video thumbnails come from `AVAssetImageGenerator` through the same thumbnail cache as images.
 - PDFs show in PDFKit's `PDFView`. Other documents show in Quick Look's `QLPreviewView`, which uses the previews that macOS includes. Document thumbnails come from `QLThumbnailGenerator`. Plain text files are not part of the sequence, because a text file next to photos is usually a note.
 - `ImagePipeline` decodes on `OperationQueue`s. Full images are cached (up to 1/8 of the memory). Thumbnails are cached separately, and a thumbnail request stops when its cell scrolls away.
+- Image descriptions use Vision (`VNClassifyImageRequest`, `VNDetectFaceRectanglesRequest` and `VNRecognizeTextRequest`) on a copy of the image of at most 2048 pixels. They run only while VoiceOver is on or the info panel shows, and Glimpse keeps the last 300 in memory.
 - The app is not sandboxed, because a sandboxed app cannot read the other files in the folder of the file that you opened. macOS can ask once for access to folders such as Desktop or Downloads.
 
 ## Roadmap
