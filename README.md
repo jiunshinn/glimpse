@@ -28,6 +28,7 @@ Glimpse fixes this. Double-click a file (or choose **Open With ▸ Glimpse**), a
 - **Filmstrip and grid**: a thumbnail strip at the bottom, and a grid of the whole folder (press **G**).
 - **Fast**: images decode in the background. The next and previous images load before you need them. A thumbnail shows at once while the full image loads.
 - **Zoom and pan**: pinch, ⌥-scroll or the mouse wheel zooms at the pointer. Double-click switches between "fit" and a close-up. Drag to pan. 100% means one image pixel on one screen pixel.
+- **Drag out**: drag the image, a filmstrip thumbnail or a grid cell to Finder, Mail, a browser or any other app. When you zoom in, a drag pans, so use ⌘-drag. You can also drag the file icon next to the window title. A drop in Finder copies the file and does not move it.
 - **Modern UI**: Liquid Glass on macOS 26 (translucent materials on macOS 14–15), a blurred ambient background from the current image, and full screen with controls that hide.
 - **Videos**: MOV, MP4, M4V and other files that macOS can play show in the same folder sequence, with the system player controls. Seek, step by frame, change the speed and the volume from the keyboard, loop, and use picture in picture. A long video starts again where you stopped it. Thumbnails show the duration.
 - **Documents**: PDF, Word (DOCX, DOC), Excel (XLSX, XLS, CSV), PowerPoint (PPTX, PPT), Pages, Numbers, Keynote, RTF and OpenDocument files show in the same folder sequence. PDFs open with PDFKit: the whole page fits, and you can scroll, zoom, rotate, select text and unlock a protected file. Other documents show with Quick Look, so you do not need Office or iWork. Spreadsheets keep their sheet tabs.
@@ -238,7 +239,11 @@ Single-key shortcuts use the key position, so they also work with a non-Latin in
 | Two-finger swipe left / right | Next / previous file (when the image fits) |
 | Pinch, ⌥-scroll or the mouse wheel | Zoom at the pointer |
 | Double-click the image | Fit ↔ close-up |
-| Drag the image | Pan |
+| Drag the image (zoomed in) | Pan |
+| Drag the image (fit) / ⌘-drag the image (zoomed in) | Drag the file to another app |
+| Drag a filmstrip thumbnail or a grid cell | Drag the file to another app or a board |
+| Drag the icon next to the window title | Drag the file to another app |
+| Drag the space around the image (fit) | Move the window |
 | Pointer near the left or right edge | Previous / next buttons |
 | Click a filmstrip thumbnail | Show that file |
 | Click / double-click a grid cell | Select / open the file |

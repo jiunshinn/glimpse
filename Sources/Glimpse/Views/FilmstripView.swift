@@ -16,6 +16,7 @@ struct FilmstripView: View {
                                       isNew: Workspace.shared.newFiles.contains(item.url))
                             .id(item.id)
                             .onTapGesture { model.go(to: offset) }
+                            .onDrag { OutgoingDrag.itemProvider(for: item.url) }
                             .help(item.name)
                     }
                 }

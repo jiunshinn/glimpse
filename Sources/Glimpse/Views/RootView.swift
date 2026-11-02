@@ -56,7 +56,10 @@ struct RootView: View {
         .environment(\.colorScheme, .dark)
         .dropDestination(for: URL.self) { urls, _ in
             model.handleDrop(urls)
-        } isTargeted: { isDropTargeted = $0 }
+        } isTargeted: { targeted in
+            // Do not offer to open the files of a drag that started in this tab.
+            isDropTargeted = targeted && !(OutgoingDrag.isActive && model.containsAll(OutgoingDrag.urls))
+        }
         .animation(.smooth(duration: 0.28), value: model.isGridMode)
         .animation(.smooth(duration: 0.28), value: model.showInfo)
         .animation(.smooth(duration: 0.28), value: model.filmstripVisible)
