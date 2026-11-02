@@ -14,7 +14,7 @@ struct ImageItem: Identifiable, Hashable, Sendable {
     var isDocument: Bool { kind == .document }
 }
 
-enum ItemKind: Sendable {
+enum ItemKind: String, Codable, Sendable {
     case image
     case video
     /// A PDF, Word, Excel, PowerPoint or iWork file.
@@ -43,11 +43,14 @@ enum ImageSource: Equatable, Sendable {
     case folder(URL)
     /// A fixed set of files (for example, several files selected in Finder).
     case files([URL])
+    /// The starred files, or the files with a tag, from all workspace folders.
+    case smart(SmartList)
 }
 
 enum OpenRequest: Equatable {
     case folder(URL, selecting: URL?)
     case files([URL])
+    case smart(SmartList)
 
     /// Turns the URLs from Finder, the Dock, the open panel or a drop into open requests.
     /// One file opens its whole folder. Several files open only those files.
@@ -93,6 +96,9 @@ enum FolderScanner {
             items = urls.compactMap(item(for:))
         case .files(let urls):
             items = urls.compactMap(item(for:))
+        case .smart:
+            // The viewer model turns a smart list into files before it scans.
+            items = []
         }
         return sorted(items, by: key, ascending: ascending)
     }

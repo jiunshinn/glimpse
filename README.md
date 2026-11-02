@@ -32,6 +32,13 @@ Glimpse fixes this. Double-click a file (or choose **Open With ▸ Glimpse**), a
 - **Info panel**: dimensions, color profile, camera, lens, exposure, date taken and GPS location (press **I**). For videos: duration, frame rate, codec, HDR, bit rate and audio. For documents: pages, page size, title, author and the app that made the file.
 - **Clean up a folder**: ⌘⌫ moves the file to the Trash and shows the next one. ⌘Z puts it back.
 - **Live folder**: new, removed and renamed files show up at once.
+- **Workspace**: add the folders that you use often. The sidebar shows them with their file counts, and every folder stays live: a new file gets a green mark. Glimpse keeps a bookmark to each folder, so a moved folder still opens. The files stay where they are.
+- **Tabs**: one window, many tabs (**⌘T**). Each tab shows a folder, a smart list or a board, and keeps its own file, view and filter. A folder that a tab shows already opens in that tab.
+- **Quick Search**: press **⌘K** to find files, folders, tags, boards and commands in all workspace folders. Type part of a name, or use filters: `type:video`, `tag:keep`, `in:drone`, `is:starred`, `is:new`. **↵** opens the result, **⌘↵** opens it in a new tab, **⌥↵** puts it on the board.
+- **File type filter**: show only images, videos or documents, or only some formats (for example HEIC and RAW). The filmstrip, the grid and the arrow keys obey the filter.
+- **Tags and favorites**: **1** to **5** add or remove the tags Keep, Edit, Client, Print and Reject. Glimpse writes Finder tags, so Finder and Spotlight show them too. **S** stars a file. The sidebar shows the starred files and the files with each tag, from all folders. Pin a folder to keep it in Favorites.
+- **Boards**: a free canvas for files from different folders. Press **B** to put the current file on the board, or drop files from Finder. Move and resize the items, add notes and arrange them in rows. A board keeps references to the files, not copies.
+- **Reopen at launch**: Glimpse opens the same tabs, files, views and filters at the next launch. A switch at the bottom of the sidebar turns this off.
 - **Formats**:
   - Images: everything that macOS can read, including JPEG, PNG, HEIC/HEIF, AVIF, WebP, GIF (animated), TIFF, BMP, PSD, ICNS and camera RAW. EXIF orientation is applied.
   - Videos: everything that macOS can play, including MOV, MP4, M4V, 3GP, AVI and MPEG.
@@ -90,6 +97,13 @@ Press **?** in the app to see this list.
 | ⌘⌫ | Move to Trash (⌘Z: undo) |
 | ⌘C / ⌥⌘C | Copy the image (a video or a document: the file) / copy the file path |
 | ⇧⌘R | Show in Finder |
+| ⌘K | Quick Search |
+| ⌘T / ⌘W | New tab / close tab |
+| ⌃⌘S | Show or hide the sidebar |
+| ⇧⌘O | Add a folder to the workspace |
+| S | Star or unstar the file |
+| 1 – 5 | Add or remove a tag: Keep, Edit, Client, Print, Reject |
+| B | Put the file on the board |
 
 While a video shows, ← → still go to the previous or next file. These keys control the video:
 
@@ -118,6 +132,8 @@ While a document shows, ← → also go to the previous or next file. These keys
 | R / ⇧R | Rotate right / left (PDF, view only) |
 | ⌘C | Copy the selected text (in a PDF without selected text: the file) |
 
+On a board, drag an item to move it and drag its corner to resize it. ⌫ removes the selected item from the board. The file stays in its folder.
+
 Single-key shortcuts use the key position, so they also work with a non-Latin input source (for example, Korean).
 
 ## How it works
@@ -125,10 +141,11 @@ Single-key shortcuts use the key position, so they also work with a non-Latin in
 ```
 Sources/Glimpse
 ├── App/        App delegate, menus, window controller (toolbar, keyboard)
-├── Model/      Folder scanning and sorting, folder watcher, ViewerModel (@Observable), video playback
+├── Model/      Folder scanning and sorting, folder watcher, ViewerModel (@Observable), video playback,
+│               workspace (folders, stars, Finder tags, boards, saved tabs), Quick Search
 ├── Imaging/    ImageIO, AVFoundation and Quick Look decoding, background pipeline with caches, metadata, pasteboard
 ├── Canvas/     Zoomable NSScrollView; the image is a layer, so the GPU scales it
-└── Views/      SwiftUI: filmstrip, grid, info panel, document stage, empty state, overlays
+└── Views/      SwiftUI: sidebar, board, Quick Search, filmstrip, grid, info panel, document stage, empty state, overlays
 ```
 
 - One window shows one folder. Opening one file scans its folder. Opening several files shows only those files.

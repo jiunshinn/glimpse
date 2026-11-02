@@ -28,6 +28,11 @@ enum Preferences {
         set { defaults.set(newValue, forKey: "gridTileSize") }
     }
 
+    static var showSidebar: Bool {
+        get { defaults.object(forKey: "showSidebar") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "showSidebar") }
+    }
+
     static var windowFrame: NSRect? {
         get { defaults.string(forKey: "windowFrame").map(NSRectFromString).flatMap { $0.isEmpty ? nil : $0 } }
         set { defaults.set(newValue.map(NSStringFromRect), forKey: "windowFrame") }

@@ -28,8 +28,15 @@ final class ViewerModel {
     // MARK: Images
 
     private(set) var source: ImageSource?
+    /// Every file of the source.
+    private(set) var allItems: [ImageItem] = []
+    /// The files that the type filter shows. The viewer, the grid, the filmstrip and the arrow keys use these.
     private(set) var items: [ImageItem] = []
     private(set) var index = 0
+    /// Shows only some kinds or formats of files. Each tab has its own filter.
+    var filter = TypeFilter() {
+        didSet { if filter != oldValue { applyFilter() } }
+    }
     private(set) var isScanning = false
     /// True from opening a folder until its first scan ends.
     private(set) var awaitsFirstScan = false
@@ -102,11 +109,25 @@ final class ViewerModel {
     @ObservationIgnored private var chromeTask: Task<Void, Never>?
     @ObservationIgnored private var lastActivity = Date.distantPast
     @ObservationIgnored private var direction = 1
+    @ObservationIgnored nonisolated(unsafe) private var workspaceObserver: NSObjectProtocol?
     /// The unrotated image that the canvas shows (a thumbnail or the full image).
     @ObservationIgnored private var base: (url: URL, image: CGImage, animated: NSImage?, pixelSize: CGSize)?
 
     init() {
         video.onFailure = { [weak self] in self?.loadFailed = true }
+        // A smart list collects files from all workspace folders. It changes when they change.
+        workspaceObserver = NotificationCenter.default.addObserver(
+            forName: .workspaceFilesDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, case .smart = self.source else { return }
+                self.reload(selecting: nil)
+            }
+        }
+    }
+
+    deinit {
+        if let workspaceObserver { NotificationCenter.default.removeObserver(workspaceObserver) }
     }
 
     // MARK: - Derived state
@@ -134,6 +155,9 @@ final class ViewerModel {
 
     /// True for a new window that shows nothing yet.
     var isBlank: Bool { source == nil }
+
+    /// True when the folder has files, but the type filter hides all of them.
+    var filterHidesAll: Bool { items.isEmpty && !allItems.isEmpty }
 
     var chromeVisible: Bool { !(isFullScreen && chromeHidden) }
 
@@ -163,6 +187,7 @@ final class ViewerModel {
         switch source {
         case .folder(let url): url.lastPathComponent
         case .files: "Selected Files"
+        case .smart(let list): list.title
         case nil: "Glimpse"
         }
     }
@@ -173,11 +198,40 @@ final class ViewerModel {
     }
 
     var windowSubtitle: String {
-        guard hasItems else { return isScanning ? "Loading…" : "" }
-        if isGridMode { return itemCountDescription }
-        let position = "\(index + 1) of \(items.count)"
-        guard showsPDF, let page = documentPage, page.count > 1 else { return position }
-        return "\(position)  ·  Page \(page.index + 1) of \(page.count)"
+        guard hasItems else {
+            if isScanning { return "Loading…" }
+            return filterHidesAll ? "No \(filter.title.lowercased())" : ""
+        }
+        var parts: [String] = []
+        if isGridMode {
+            parts.append(itemCountDescription)
+        } else {
+            parts.append("\(index + 1) of \(items.count)")
+            if showsPDF, let page = documentPage, page.count > 1 {
+                parts.append("Page \(page.index + 1) of \(page.count)")
+            }
+            if let url = current?.url {
+                let workspace = Workspace.shared
+                if workspace.isStarred(url) { parts.append("★") }
+                let tags = workspace.tags(for: url).map(\.name)
+                if !tags.isEmpty { parts.append(tags.joined(separator: ", ")) }
+            }
+        }
+        if filter.isActive { parts.append(filter.title) }
+        return parts.joined(separator: "  ·  ")
+    }
+
+    /// The number of files of each kind, before the filter.
+    var kindCounts: [ItemKind: Int] {
+        Dictionary(grouping: allItems, by: \.kind).mapValues(\.count)
+    }
+
+    /// The formats of the files and their numbers, for the kind that the filter shows.
+    var formatCounts: [(format: String, count: Int)] {
+        let shown = allItems.filter { filter.kind == nil || $0.kind == filter.kind }
+        return Dictionary(grouping: shown, by: \.format)
+            .map { (format: $0.key, count: $0.value.count) }
+            .sorted { $0.format < $1.format }
     }
 
     private var itemCountDescription: String {
@@ -199,6 +253,8 @@ final class ViewerModel {
         info = nil
         showShortcuts = false
         awaitsFirstScan = true
+        allItems = []
+        items = []
 
         switch request {
         case .folder(let folder, let selection):
@@ -207,7 +263,10 @@ final class ViewerModel {
                 MainActor.assumeIsolated { self?.reload(selecting: nil) }
             }
             if let selection, let item = FolderScanner.item(for: selection) {
+                // The chosen file must show, so a filter that hides it goes away.
+                if !filter.allows(item) { filter = TypeFilter() }
                 // Show the chosen image at once. The rest of the folder arrives after the scan.
+                allItems = [item]
                 items = [item]
                 index = 0
                 isGridMode = false
@@ -215,7 +274,6 @@ final class ViewerModel {
                 loadCurrent()
                 NSDocumentController.shared.noteNewRecentDocumentURL(selection)
             } else {
-                items = []
                 index = 0
                 isGridMode = true
                 clearCanvas()
@@ -224,12 +282,45 @@ final class ViewerModel {
             reload(selecting: selection)
         case .files(let urls):
             source = .files(urls)
-            items = []
             index = 0
             isGridMode = false
             clearCanvas()
             reload(selecting: nil)
+        case .smart(let list):
+            source = .smart(list)
+            index = 0
+            isGridMode = true
+            clearCanvas()
+            reload(selecting: nil)
         }
+    }
+
+    /// Shows a file of the source. It opens the folder of the file if the source does not have it.
+    func show(_ url: URL) {
+        if let found = items.firstIndex(where: { $0.url.isSameFile(as: url) }) {
+            openViewer(at: found)
+        } else if allItems.contains(where: { $0.url.isSameFile(as: url) }) {
+            filter = TypeFilter()
+            show(url)
+        } else {
+            open(.folder(url.deletingLastPathComponent(), selecting: url))
+        }
+    }
+
+    /// Empties the tab, for example before the tab shows a board.
+    func close() {
+        scanTask?.cancel()
+        watcher = nil
+        source = nil
+        allItems = []
+        items = []
+        index = 0
+        isScanning = false
+        awaitsFirstScan = false
+        isGridMode = false
+        showInfo = false
+        showShortcuts = false
+        clearCanvas()
     }
 
     func handleDrop(_ urls: [URL]) -> Bool {
@@ -244,10 +335,17 @@ final class ViewerModel {
         isScanning = true
         let key = sortKey
         let ascending = sortAscending
+        // A smart list becomes the list of its files now. The scan runs in the background.
+        let scanned: ImageSource
+        if case .smart(let list) = source {
+            scanned = .files(Workspace.shared.urls(for: list))
+        } else {
+            scanned = source
+        }
         scanTask?.cancel()
         scanTask = Task { [weak self] in
             let scanned = await Task.detached(priority: .userInitiated) {
-                FolderScanner.scan(source, sortedBy: key, ascending: ascending)
+                FolderScanner.scan(scanned, sortedBy: key, ascending: ascending)
             }.value
             guard let self, !Task.isCancelled, self.source == source else { return }
             self.apply(scanned, selecting: url)
@@ -263,15 +361,16 @@ final class ViewerModel {
         }
         let previous = current
         let target = url ?? previous?.url
-        let oldDates = Dictionary(items.map { ($0.url, $0.modified) }, uniquingKeysWith: { first, _ in first })
+        let oldDates = Dictionary(allItems.map { ($0.url, $0.modified) }, uniquingKeysWith: { first, _ in first })
         for item in scanned where oldDates[item.url].map({ $0 != item.modified }) ?? false {
             pipeline.invalidate(item.url)
         }
-        items = scanned
-        if let target, let found = scanned.firstIndex(where: { $0.url.isSameFile(as: target) }) {
+        allItems = scanned
+        items = scanned.filter(filter.allows)
+        if let target, let found = items.firstIndex(where: { $0.url.isSameFile(as: target) }) {
             index = found
         } else {
-            index = min(index, max(scanned.count - 1, 0))
+            index = min(index, max(items.count - 1, 0))
         }
         guard hasItems else {
             clearCanvas()
@@ -286,10 +385,36 @@ final class ViewerModel {
 
     private func resort() {
         let selected = current?.url
-        items = FolderScanner.sorted(items, by: sortKey, ascending: sortAscending)
+        allItems = FolderScanner.sorted(allItems, by: sortKey, ascending: sortAscending)
+        items = allItems.filter(filter.allows)
         if let selected, let found = items.firstIndex(where: { $0.url == selected }) {
             index = found
         }
+    }
+
+    private func applyFilter() {
+        let previous = current
+        items = allItems.filter(filter.allows)
+        if let previous, let found = items.firstIndex(where: { $0.url == previous.url }) {
+            index = found
+        } else {
+            index = min(index, max(items.count - 1, 0))
+        }
+        guard hasItems else {
+            if !allItems.isEmpty { clearCanvas() }
+            return
+        }
+        if current != previous || !hasViewerContent {
+            rotation = 0
+            if !isGridMode { loadCurrent() }
+            if showInfo { loadInfo() }
+        }
+    }
+
+    func toggleFormat(_ format: String) {
+        var changed = filter
+        if changed.formats.contains(format) { changed.formats.remove(format) } else { changed.formats.insert(format) }
+        filter = changed
     }
 
     private func clearCanvas() {
@@ -390,6 +515,7 @@ final class ViewerModel {
             return
         }
         loadFailed = false
+        Workspace.shared.markSeen(item.url)
         switch item.kind {
         case .image:
             if video.url != nil { stopVideo() }
@@ -726,6 +852,23 @@ final class ViewerModel {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
+    // MARK: - Stars and tags
+
+    func toggleStar() {
+        guard let url = current?.url else { return }
+        let starred = Workspace.shared.toggleStar(url)
+        showToast(starred ? "Starred" : "Star removed", symbol: starred ? "star.fill" : "star.slash")
+    }
+
+    func toggleTag(_ tag: FinderTag) {
+        guard let url = current?.url else { return }
+        guard let added = Workspace.shared.toggleTag(tag, for: url) else {
+            showToast("Couldn’t change the tags", symbol: "exclamationmark.triangle")
+            return
+        }
+        showToast(added ? tag.name : "Removed \(tag.name)", symbol: added ? "tag.fill" : "tag.slash")
+    }
+
     // MARK: - Trash
 
     func moveCurrentToTrash(undoManager: UndoManager?) {
@@ -745,6 +888,7 @@ final class ViewerModel {
         if case .files(let urls) = source {
             source = .files(urls.filter { !$0.isSameFile(as: url) })
         }
+        allItems.removeAll { $0.url.isSameFile(as: url) }
         if let removed = items.firstIndex(where: { $0.url.isSameFile(as: url) }) {
             let removedCurrent = removed == index
             items.remove(at: removed)

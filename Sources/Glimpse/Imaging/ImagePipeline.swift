@@ -9,6 +9,7 @@ final class ImagePipeline: @unchecked Sendable {
 
     private let fullCache = NSCache<NSURL, DecodedImage>()
     private let thumbnailCache = NSCache<NSURL, Thumbnail>()
+    private let previewCache = NSCache<NSURL, Thumbnail>()
     private let fullQueue = OperationQueue()
     private let thumbnailQueue = OperationQueue()
     private let lock = NSLock()
@@ -30,6 +31,8 @@ final class ImagePipeline: @unchecked Sendable {
         fullCache.countLimit = 16
         thumbnailCache.totalCostLimit = 320 * 1_024 * 1_024
         thumbnailCache.countLimit = 4_000
+        previewCache.totalCostLimit = 256 * 1_024 * 1_024
+        previewCache.countLimit = 120
 
         fullQueue.name = "Glimpse.full"
         fullQueue.maxConcurrentOperationCount = 2
@@ -50,10 +53,15 @@ final class ImagePipeline: @unchecked Sendable {
         thumbnailCache.object(forKey: url as NSURL)
     }
 
+    func cachedPreview(for url: URL) -> Thumbnail? {
+        previewCache.object(forKey: url as NSURL)
+    }
+
     /// Removes the cached data for a file that changed or was deleted.
     func invalidate(_ url: URL) {
         fullCache.removeObject(forKey: url as NSURL)
         thumbnailCache.removeObject(forKey: url as NSURL)
+        previewCache.removeObject(forKey: url as NSURL)
     }
 
     // MARK: - Full images
@@ -126,16 +134,32 @@ final class ImagePipeline: @unchecked Sendable {
     // MARK: - Thumbnails
 
     func thumbnail(for url: URL) async -> Thumbnail? {
-        if let cached = cachedThumbnail(for: url) { return cached }
+        await decodeSmall(url, preview: false)
+    }
+
+    /// A larger thumbnail, for the items on a board.
+    func preview(for url: URL) async -> Thumbnail? {
+        await decodeSmall(url, preview: true)
+    }
+
+    static let previewPixelSize = 1_200
+
+    private func smallCache(_ preview: Bool) -> NSCache<NSURL, Thumbnail> {
+        preview ? previewCache : thumbnailCache
+    }
+
+    private func decodeSmall(_ url: URL, preview: Bool) async -> Thumbnail? {
+        if let cached = smallCache(preview).object(forKey: url as NSURL) { return cached }
+        let maxPixelSize = preview ? Self.previewPixelSize : ImageDecoder.thumbnailPixelSize
         let operation = DecodeOperation(url: url) { [self] url in
-            cachedThumbnail(for: url) ?? ImageDecoder.decodeThumbnail(url)
+            smallCache(preview).object(forKey: url as NSURL) ?? ImageDecoder.decodeThumbnail(url, maxPixelSize: maxPixelSize)
         }
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 // The completion block also runs for a cancelled operation, so the continuation always resumes.
                 operation.completionBlock = { [self, unowned operation] in
                     if let output = operation.output {
-                        thumbnailCache.setObject(output, forKey: url as NSURL, cost: output.cost)
+                        smallCache(preview).setObject(output, forKey: url as NSURL, cost: output.cost)
                     }
                     continuation.resume(returning: operation.output)
                 }
