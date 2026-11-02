@@ -25,7 +25,7 @@ Glimpse fixes this. Double-click a file (or choose **Open With ▸ Glimpse**), a
 ### Viewer
 
 - **Browse a folder with the keyboard**: ← → / Space, Home / End, and a two-finger swipe on the trackpad.
-- **Filmstrip and grid**: a thumbnail strip at the bottom, and a grid of the whole folder (press **G**).
+- **Filmstrip and grid**: a thumbnail strip at the bottom, and a grid of the whole folder (press **G**). Pinch the grid to show more or fewer columns, as in Photos.
 - **Fast**: images decode in the background. The next and previous images load before you need them. A thumbnail shows at once while the full image loads.
 - **Zoom and pan**: pinch, ⌥-scroll or the mouse wheel zooms at the pointer. Double-click switches between "fit" and a close-up. Drag to pan. 100% means one image pixel on one screen pixel.
 - **Drag out**: drag the image, a filmstrip thumbnail or a grid cell to Finder, Mail, a browser or any other app. When you zoom in, a drag pans, so use ⌘-drag. You can also drag the file icon next to the window title. A drop in Finder copies the file and does not move it.
@@ -247,6 +247,7 @@ Single-key shortcuts use the key position, so they also work with a non-Latin in
 | Pointer near the left or right edge | Previous / next buttons |
 | Click a filmstrip thumbnail | Show that file |
 | Click / double-click a grid cell | Select / open the file |
+| Pinch the grid | Larger / smaller tiles; the file under the pointer stays in place |
 | Drop files or a folder on the viewer | Open them in this tab |
 | Click a sidebar row | Open it in this tab, or go to the tab that shows it |
 | ⌘-click a sidebar row | Open it in a new tab |

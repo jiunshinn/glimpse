@@ -5,6 +5,7 @@ struct GridView: View {
 
     private let spacing: CGFloat = 14
     private let padding: CGFloat = 22
+    @State private var pinch = Pinch()
 
     var body: some View {
         GeometryReader { proxy in
@@ -18,7 +19,7 @@ struct GridView: View {
                               spacing: spacing + 4) {
                         ForEach(Array(model.items.enumerated()), id: \.element.id) { offset, item in
                             GridCell(item: item, isSelected: offset == model.index, size: tile,
-                                     marks: FileMarks(item.url))
+                                     marks: FileMarks(item.url), onHover: { pinch.hoveredID = item.id })
                                 .id(item.id)
                                 .onTapGesture(count: 2) { model.openViewer(at: offset) }
                                 .simultaneousGesture(TapGesture().onEnded { model.go(to: offset) })
@@ -31,11 +32,18 @@ struct GridView: View {
                     .padding(.trailing, model.showInfo ? Layout.infoPanelWidth + Layout.panelMargin : 0)
                 }
                 .scrollIndicators(.automatic)
+                .gesture(pinchGesture)
                 .onAppear {
                     model.gridColumns = columns
                     if let id = model.current?.id { scroller.scrollTo(id, anchor: .center) }
                 }
-                .onChange(of: columns) { _, newValue in model.gridColumns = newValue }
+                .onChange(of: columns) { _, newValue in
+                    model.gridColumns = newValue
+                    // Keep the file under the pointer at the same place while the columns change.
+                    if pinch.baseSize != nil, let id = pinch.anchorID {
+                        scroller.scrollTo(id, anchor: pinch.anchor)
+                    }
+                }
                 .onChange(of: model.current?.id) { _, id in
                     guard let id else { return }
                     withAnimation(.smooth(duration: 0.2)) { scroller.scrollTo(id) }
@@ -43,6 +51,33 @@ struct GridView: View {
             }
         }
     }
+
+    /// Pinch to change the tile size, as in Photos. The grid gets a column more or less at each step.
+    private var pinchGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                if pinch.baseSize == nil {
+                    pinch.baseSize = model.gridTileSize
+                    pinch.anchorID = pinch.hoveredID
+                    pinch.anchor = value.startAnchor
+                }
+                let sizes = ViewerModel.gridTileSizes
+                let size = (pinch.baseSize ?? model.gridTileSize) * value.magnification
+                model.gridTileSize = min(max(size, sizes.lowerBound), sizes.upperBound)
+            }
+            .onEnded { _ in pinch.baseSize = nil }
+    }
+}
+
+/// The state of a pinch in the grid. It is not observed, so a change does not redraw the grid.
+private final class Pinch {
+    /// The tile size when the pinch started. It is nil when there is no pinch.
+    var baseSize: Double?
+    /// The file under the pointer when the pinch started, and its position in the visible area.
+    var anchorID: ImageItem.ID?
+    var anchor = UnitPoint.center
+    /// The cell that the pointer went over last.
+    var hoveredID: ImageItem.ID?
 }
 
 /// The star, the tags and the new-file mark of a file.
@@ -65,6 +100,7 @@ private struct GridCell: View {
     let isSelected: Bool
     let size: CGFloat
     let marks: FileMarks
+    let onHover: () -> Void
 
     @State private var isHovered = false
 
@@ -96,7 +132,10 @@ private struct GridCell: View {
                 .frame(maxWidth: size)
         }
         .contentShape(Rectangle())
-        .onHover { isHovered = $0 }
+        .onHover { hovering in
+            isHovered = hovering
+            if hovering { onHover() }
+        }
         .animation(.easeOut(duration: 0.12), value: isHovered)
         .help(item.name)
     }

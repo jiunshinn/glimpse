@@ -80,6 +80,8 @@ final class ViewerModel {
     var gridTileSize = Preferences.gridTileSize {
         didSet { Preferences.gridTileSize = gridTileSize }
     }
+    /// The smallest and the largest grid tile.
+    static let gridTileSizes: ClosedRange<Double> = 90...420
     var gridColumns = 1
     var showShortcuts = false
     var isFullScreen = false {
@@ -720,7 +722,7 @@ final class ViewerModel {
 
     func zoomIn() {
         if isGridMode {
-            gridTileSize = min(gridTileSize + 40, 420)
+            gridTileSize = min(gridTileSize + 40, Self.gridTileSizes.upperBound)
         } else if let pdfView {
             pdfView.zoomIn()
             reportZoom(of: pdfView)
@@ -731,7 +733,7 @@ final class ViewerModel {
 
     func zoomOut() {
         if isGridMode {
-            gridTileSize = max(gridTileSize - 40, 90)
+            gridTileSize = max(gridTileSize - 40, Self.gridTileSizes.lowerBound)
         } else if let pdfView {
             pdfView.zoomOut()
             reportZoom(of: pdfView)
