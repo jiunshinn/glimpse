@@ -83,6 +83,7 @@ struct SidebarView: View {
                         Text(tag.name)
                     } icon: {
                         Circle().fill(tag.displayColor).frame(width: 10, height: 10)
+                            .accessibilityHidden(true)
                     }
                     .badge(workspace.tagCounts[tag.name] ?? 0)
                     .tag(SidebarItem.smart(.tag(tag.name)))
@@ -158,6 +159,16 @@ struct SidebarView: View {
                 .foregroundStyle(unreadable ? Color.yellow : Color.accentColor)
         }
         .help(unreadable ? "Glimpse can’t read \(folder.url.path)" : folder.url.path)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(folderAccessibilityLabel(folder.name, unreadable: unreadable, newCount: newCount))
+    }
+
+    /// VoiceOver cannot see the green dot or the warning symbol. Say what they mean.
+    private func folderAccessibilityLabel(_ name: String, unreadable: Bool, newCount: Int) -> String {
+        var parts = [name]
+        if unreadable { parts.append("Glimpse can’t read this folder") }
+        if newCount > 0 { parts.append(newCount == 1 ? "1 new file" : "\(newCount) new files") }
+        return parts.joined(separator: ", ")
     }
 
     @ViewBuilder
@@ -213,11 +224,14 @@ struct SidebarView: View {
         HStack(spacing: 8) {
             Image(systemName: "clock.arrow.circlepath")
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            // The switch has the same name for VoiceOver.
             Text("Reopen at Launch")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .fixedSize()
+                .accessibilityHidden(true)
             Spacer(minLength: 0)
             Toggle("Reopen at Launch", isOn: reopenAtLaunch)
                 .toggleStyle(.switch)
@@ -239,6 +253,10 @@ struct SidebarView: View {
             guard let item else { return }
             let inNewTab = NSEvent.modifierFlags.contains(.command)
             tab.controller?.openSidebarItem(item, inNewTab: inNewTab)
+            // After a click, the arrow keys browse the files. After ↑ ↓ in the sidebar, the keys stay in the sidebar.
+            if let type = NSApp.currentEvent?.type, type == .leftMouseDown || type == .leftMouseUp {
+                DispatchQueue.main.async { tab.controller?.focusContent() }
+            }
         }
     }
 

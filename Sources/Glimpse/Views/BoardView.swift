@@ -11,6 +11,7 @@ struct BoardView: View {
     @State private var drag: (id: UUID, offset: CGSize)?
     @State private var resize: (id: UUID, width: CGFloat)?
     @FocusState private var focusedNote: UUID?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var workspace: Workspace { .shared }
 
@@ -42,6 +43,7 @@ struct BoardView: View {
                     .frame(width: width, height: height)
                     .contentShape(Rectangle())
                     .onTapGesture { tab.boardSelection = nil }
+                    .accessibilityHidden(true)
 
                 ForEach(board.items) { item in
                     itemView(item)
@@ -80,8 +82,22 @@ struct BoardView: View {
                         }
                         Button("Remove from Board") { workspace.removeItem(item.id, from: boardID) }
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(BoardItemAccessibility.label(item))
+                    .accessibilityValue(item.url.map { QuickSearchModel.folderName(of: $0) } ?? "")
+                    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                    .accessibilityAction {
+                        if let url = item.url { tab.controller?.openFromBoard(url) }
+                    }
+                    .accessibilityAction(named: "Select") { select(item) }
+                    .accessibilityAction(named: "Show in Finder") {
+                        if let url = item.url { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                    }
             }
         }
+        .accessibilityAction(named: "Make Larger") { resize(item, by: 1.25) }
+        .accessibilityAction(named: "Make Smaller") { resize(item, by: 0.8) }
+        .accessibilityAction(named: "Remove from Board") { workspace.removeItem(item.id, from: boardID) }
         .overlay(alignment: .bottomTrailing) {
             Circle()
                 .fill(Color.white)
@@ -90,7 +106,8 @@ struct BoardView: View {
                 .offset(x: 6, y: 6)
                 .opacity(isSelected ? 1 : 0)
                 .gesture(resizeGesture(item))
-                .help("Drag to resize")
+                .help("Drag to resize, or press + and −")
+                .accessibilityHidden(true)
         }
         .offset(x: item.x + offset.width, y: item.y + offset.height)
     }
@@ -105,12 +122,14 @@ struct BoardView: View {
                 .contentShape(Rectangle())
                 .gesture(moveGesture(item))
                 .onTapGesture { select(item) }
+                .accessibilityHidden(true)
             TextField("Note", text: noteText(item), axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color(red: 0.23, green: 0.2, blue: 0.06))
                 .focused($focusedNote, equals: item.id)
                 .onChange(of: focusedNote) { _, id in if id == item.id { select(item) } }
+                .accessibilityLabel("Note")
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 14)
@@ -126,6 +145,8 @@ struct BoardView: View {
         .contextMenu {
             Button("Remove from Board") { workspace.removeItem(item.id, from: boardID) }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Note")
     }
 
     private var emptyState: some View {
@@ -133,6 +154,7 @@ struct BoardView: View {
             Image(systemName: "rectangle.3.group")
                 .font(.system(size: 40, weight: .thin))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text("This board is empty")
                 .font(.system(size: 17, weight: .semibold))
             Text("Press B on a file to put it here, or drop files from Finder.\nThe files stay in their folders.")
@@ -149,6 +171,12 @@ struct BoardView: View {
     }
 
     // MARK: - Gestures
+
+    private func resize(_ item: BoardItem, by factor: Double) {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) {
+            workspace.updateItem(item.id, in: boardID) { $0.width = BoardItemAccessibility.clampedWidth($0.width * factor) }
+        }
+    }
 
     private func select(_ item: BoardItem) {
         tab.boardSelection = item.id
@@ -173,19 +201,16 @@ struct BoardView: View {
     private func resizeGesture(_ item: BoardItem) -> some Gesture {
         DragGesture(minimumDistance: 1)
             .onChanged { value in
-                resize = (item.id, Self.clampedWidth(item.width + value.translation.width))
+                resize = (item.id, BoardItemAccessibility.clampedWidth(item.width + value.translation.width))
             }
             .onEnded { value in
                 resize = nil
                 workspace.updateItem(item.id, in: boardID) {
-                    $0.width = Self.clampedWidth($0.width + value.translation.width)
+                    $0.width = BoardItemAccessibility.clampedWidth($0.width + value.translation.width)
                 }
             }
     }
 
-    private static func clampedWidth(_ width: CGFloat) -> CGFloat {
-        min(max(width, 90), 1_400)
-    }
 
     private func noteText(_ item: BoardItem) -> Binding<String> {
         Binding {
@@ -193,6 +218,20 @@ struct BoardView: View {
         } set: { text in
             workspace.updateItem(item.id, in: boardID) { $0.note = text }
         }
+    }
+}
+
+/// What VoiceOver reads for a board item, and the size limits that the mouse and the keys share.
+enum BoardItemAccessibility {
+    static func label(_ item: BoardItem) -> String {
+        if let note = item.note {
+            return note.isEmpty ? "Empty note" : "Note: \(note)"
+        }
+        return item.url?.lastPathComponent ?? "Missing file"
+    }
+
+    static func clampedWidth(_ width: CGFloat) -> CGFloat {
+        min(max(width, 90), 1_400)
     }
 }
 

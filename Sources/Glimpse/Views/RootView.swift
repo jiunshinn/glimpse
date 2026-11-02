@@ -5,6 +5,7 @@ struct RootView: View {
     @State private var isDropTargeted = false
     /// What a drop does, when a file from another tab goes into the folder of this tab.
     @State private var dropLabel: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -17,6 +18,7 @@ struct RootView: View {
             CanvasRepresentable(model: model)
                 .opacity(model.isGridMode ? 0 : 1)
                 .allowsHitTesting(!model.isGridMode)
+                .accessibilityHidden(!model.showsImage || model.canvasContent == nil)
 
             if model.showsVideo && !model.loadFailed {
                 VideoStage(model: model)
@@ -31,7 +33,7 @@ struct RootView: View {
 
             if model.isGridMode && model.hasItems {
                 GridView(model: model)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                    .transition(.motion(.opacity.combined(with: .scale(scale: 0.98)), reduceMotion: reduceMotion))
             }
 
             if !model.hasItems {
@@ -46,8 +48,8 @@ struct RootView: View {
             ToastLayer(model: model)
 
             if model.showShortcuts {
-                ShortcutsOverlay { model.showShortcuts = false }
-                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                ShortcutsOverlay(topInset: model.topInset) { model.showShortcuts = false }
+                    .transition(.motion(.opacity.combined(with: .scale(scale: 0.97)), reduceMotion: reduceMotion))
             }
 
             if isDropTargeted && model.hasItems {
@@ -84,7 +86,7 @@ struct RootView: View {
                     FilmstripView(model: model)
                         .padding(.horizontal, 24)
                         .padding(.bottom, Layout.filmstripBottomMargin)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(.motion(.move(edge: .bottom).combined(with: .opacity), reduceMotion: reduceMotion))
                 }
             }
             .frame(maxWidth: .infinity)
@@ -94,7 +96,7 @@ struct RootView: View {
                     .padding(.top, model.topInset + Layout.panelMargin)
                     .padding(.bottom, Layout.panelMargin)
                     .padding(.trailing, Layout.panelMargin)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .transition(.motion(.move(edge: .trailing).combined(with: .opacity), reduceMotion: reduceMotion))
             }
         }
     }
@@ -125,6 +127,7 @@ struct AmbientBackdrop: View {
         }
         .animation(.easeInOut(duration: 0.45), value: key)
         .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
@@ -167,5 +170,6 @@ struct LoadFailedView: View {
         .padding(28)
         .glassSurface(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
     }
 }

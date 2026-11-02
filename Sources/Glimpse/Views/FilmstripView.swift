@@ -6,6 +6,7 @@ struct FilmstripView: View {
     private let cellSize: CGFloat = 46
     private let spacing: CGFloat = 6
     private let padding: CGFloat = 9
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -20,6 +21,8 @@ struct FilmstripView: View {
                             .onDrag { OutgoingDrag.itemProvider(for: item.url) }
                             .contextMenu { FileContextMenu(model: model, url: item.url) }
                             .help(item.name)
+                            .fileAccessibility(item, marks: FileMarks(item.url), isSelected: offset == model.index,
+                                               model: model) { model.go(to: offset) }
                     }
                 }
                 .padding(.horizontal, padding)
@@ -28,7 +31,7 @@ struct FilmstripView: View {
             .scrollIndicators(.never)
             .onChange(of: model.current?.id, initial: true) { _, id in
                 guard let id else { return }
-                withAnimation(.smooth(duration: 0.3)) {
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) {
                     proxy.scrollTo(id, anchor: .center)
                 }
             }
@@ -37,6 +40,8 @@ struct FilmstripView: View {
         .frame(maxWidth: maxWidth)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .glassSurface(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Thumbnails")
         .onHover { model.pointerOverChrome = $0 }
     }
 
@@ -55,6 +60,8 @@ private struct FilmstripCell: View {
     let isPinned: Bool
 
     @State private var isHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         ThumbnailImage(url: url, contentMode: .fill)
@@ -84,11 +91,12 @@ private struct FilmstripCell: View {
                 }
             }
             .scaleEffect(isSelected ? 1 : 0.86)
-            .opacity(isSelected || isHovered ? 1 : 0.6)
+            // Increase Contrast keeps the other thumbnails easy to see.
+            .opacity(isSelected || isHovered ? 1 : contrast == .increased ? 0.85 : 0.6)
             .shadow(color: .black.opacity(isSelected ? 0.4 : 0), radius: 6, y: 2)
             .contentShape(Rectangle())
             .onHover { isHovered = $0 }
-            .animation(.snappy(duration: 0.2), value: isSelected)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: isSelected)
             .animation(.easeOut(duration: 0.12), value: isHovered)
     }
 }

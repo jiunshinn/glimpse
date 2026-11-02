@@ -13,6 +13,9 @@ struct InfoPanel: View {
                         ForEach(info.sections) { section in
                             SectionView(section: section)
                         }
+                        if let description = model.currentDescription {
+                            SectionView(section: Self.section(for: description))
+                        }
                         if let coordinate = info.coordinate {
                             Button {
                                 let query = "ll=\(coordinate.latitude),\(coordinate.longitude)&q=\(coordinate.latitude),\(coordinate.longitude)"
@@ -25,6 +28,7 @@ struct InfoPanel: View {
                             }
                             .glassButtonStyle()
                             .controlSize(.large)
+                            .reportsKeyboardFocus(to: model)
                         }
                     }
                     .padding(18)
@@ -66,8 +70,28 @@ struct InfoPanel: View {
             }
             .buttonStyle(.plain)
             .help("Close Info (I)")
+            .accessibilityLabel("Close Info")
+            .reportsKeyboardFocus(to: model)
         }
         .padding(18)
+    }
+
+    /// What Vision found in the image. VoiceOver reads the same text on the image.
+    private static func section(for description: ImageDescription) -> ImageInfo.Section {
+        var rows: [ImageInfo.Row] = []
+        if !description.labels.isEmpty {
+            rows.append(ImageInfo.Row(label: "Shows", value: description.labels.joined(separator: ", ")))
+        }
+        if description.faces > 0 {
+            rows.append(ImageInfo.Row(label: "Faces", value: "\(description.faces)"))
+        }
+        if let text = description.text {
+            rows.append(ImageInfo.Row(label: "Text", value: text))
+        }
+        if rows.isEmpty {
+            rows.append(ImageInfo.Row(label: "Shows", value: "Nothing that Vision knows"))
+        }
+        return ImageInfo.Section(title: "Description", rows: rows)
     }
 }
 
@@ -80,6 +104,8 @@ private struct SectionView: View {
                 .font(.system(size: 10.5, weight: .semibold))
                 .tracking(0.8)
                 .foregroundStyle(.tertiary)
+                .accessibilityLabel(section.title)
+                .accessibilityAddTraits(.isHeader)
             ForEach(section.rows) { row in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text(row.label)
@@ -91,6 +117,7 @@ private struct SectionView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .font(.system(size: 12))
+                .accessibilityElement(children: .combine)
             }
         }
     }

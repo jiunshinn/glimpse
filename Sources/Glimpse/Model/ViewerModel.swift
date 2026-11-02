@@ -63,7 +63,11 @@ final class ViewerModel {
 
     private(set) var isGridMode = false
     var showInfo = false {
-        didSet { if showInfo { loadInfo() } }
+        didSet {
+            guard showInfo else { return }
+            loadInfo()
+            describeCurrentIfNeeded()
+        }
     }
     var showThumbnails = Preferences.showThumbnails {
         didSet { Preferences.showThumbnails = showThumbnails }
@@ -95,6 +99,11 @@ final class ViewerModel {
     private(set) var hoverEdge: HoverEdge?
     private(set) var toast: Toast?
 
+    // MARK: Accessibility
+
+    /// What Vision found in an image. VoiceOver reads it, and the info panel shows it.
+    private(set) var imageDescription: ImageDescription?
+
     // MARK: Private state
 
     let video = VideoController()
@@ -109,6 +118,10 @@ final class ViewerModel {
     @ObservationIgnored private var infoTask: Task<Void, Never>?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var chromeTask: Task<Void, Never>?
+    @ObservationIgnored private var describeTask: Task<Void, Never>?
+    @ObservationIgnored private var voiceOverObservation: NSKeyValueObservation?
+    /// The controls in the viewer that have the keyboard focus now.
+    @ObservationIgnored private var focusedControls: Set<UUID> = []
     @ObservationIgnored private var lastActivity = Date.distantPast
     @ObservationIgnored private var direction = 1
     @ObservationIgnored nonisolated(unsafe) private var workspaceObservers: [NSObjectProtocol] = []
@@ -131,6 +144,9 @@ final class ViewerModel {
                 MainActor.assumeIsolated { self?.resort() }
             },
         ]
+        voiceOverObservation = NSWorkspace.shared.observe(\.isVoiceOverEnabled) { [weak self] _, _ in
+            Task { @MainActor in self?.describeCurrentIfNeeded() }
+        }
     }
 
     deinit {
@@ -495,6 +511,7 @@ final class ViewerModel {
         rotation = 0
         if !isGridMode { loadCurrent() }
         if showInfo { loadInfo() }
+        announceCurrent()
     }
 
     func next() {
@@ -548,6 +565,8 @@ final class ViewerModel {
             video.pause()
         } else if let url = current?.url, !(displayedURL.map { $0.isSameFile(as: url) } ?? false) {
             loadCurrent()
+        } else {
+            describeCurrentIfNeeded()
         }
     }
 
@@ -560,6 +579,7 @@ final class ViewerModel {
         index = newIndex
         setGridMode(false)
         if showInfo { loadInfo() }
+        announceCurrent()
     }
 
     // MARK: - Loading
@@ -586,6 +606,7 @@ final class ViewerModel {
             loadDocument(item)
         }
         prefetchNeighbors()
+        describeCurrentIfNeeded()
     }
 
     private func loadImage(_ url: URL) {
@@ -1009,11 +1030,61 @@ final class ViewerModel {
         undoManager.setActionName("Move to Trash")
     }
 
+    // MARK: - Accessibility
+
+    /// The position of the current file, for example "3 of 120".
+    private var positionDescription: String { "\(index + 1) of \(items.count)" }
+
+    /// What VoiceOver reads for the image on the canvas: the name, the position and the description.
+    var canvasAccessibilityLabel: String {
+        guard let current else { return "" }
+        var text = "\(current.name), \(positionDescription)"
+        if let description = currentDescription { text += ". \(description.spoken)" }
+        return text
+    }
+
+    /// The description of the current image. It is nil until Vision is done.
+    var currentDescription: ImageDescription? {
+        guard let description = imageDescription, description.url == current?.url else { return nil }
+        return description
+    }
+
+    /// VoiceOver does not follow the arrow keys, so it reads the name of each new file.
+    private func announceCurrent() {
+        guard let current, Accessibility.isVoiceOverOn else { return }
+        Accessibility.announce("\(current.name), \(positionDescription)")
+    }
+
+    /// Vision describes the current image when VoiceOver is on or the info panel shows.
+    private func describeCurrentIfNeeded() {
+        guard let item = current, item.kind == .image, !isGridMode, showInfo || Accessibility.isVoiceOverOn,
+              imageDescription?.url != item.url else { return }
+        describeTask?.cancel()
+        let url = item.url
+        describeTask = Task { [weak self] in
+            let description = await ImageDescriber.shared.describe(url)
+            guard let self, !Task.isCancelled, let description, self.current?.url == url else { return }
+            self.imageDescription = description
+            // A low priority does not cut off the name of the file.
+            if !self.isGridMode { Accessibility.announce(description.spoken, priority: .low) }
+        }
+    }
+
+    /// Full Keyboard Access moved the focus to a control in the viewer, or away from it.
+    func setControlFocus(_ focused: Bool, id: UUID) {
+        if focused { focusedControls.insert(id) } else { focusedControls.remove(id) }
+    }
+
+    /// True when a button in the viewer has the keyboard focus. Space and Return then press it.
+    var controlHasKeyboardFocus: Bool { !focusedControls.isEmpty }
+
     // MARK: - Toasts
 
     func showToast(_ message: String, symbol: String? = nil) {
         let toast = Toast(message: message, symbol: symbol)
         self.toast = toast
+        // VoiceOver reads "·" as a word.
+        Accessibility.announce(message.replacingOccurrences(of: "  ·  ", with: ", "), priority: .medium)
         toastTask?.cancel()
         toastTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.2))
