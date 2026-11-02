@@ -74,6 +74,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                         model.filter = TypeFilter(kind: kinds[String(command.dropFirst(7))])
                         return
                     }
+                    // "moveto:1" drops the current file on the second workspace folder in the sidebar.
+                    if command.hasPrefix("moveto:"), let url = model.current?.url {
+                        let index = Int(command.dropFirst(7)) ?? 0
+                        if workspace.folders.indices.contains(index) {
+                            model.transfer([url], into: workspace.folders[index].url,
+                                           undoManager: controller.window?.undoManager)
+                        }
+                        return
+                    }
+                    // "owndrop:/path/file.png" drops a file from another Glimpse tab on this tab.
+                    if command.hasPrefix("owndrop:") {
+                        let url = URL(fileURLWithPath: String(command.dropFirst(8)))
+                        OutgoingDrag.begin([url])
+                        _ = model.handleDrop([url])
+                        return
+                    }
+                    if command == "undo" {
+                        controller.window?.undoManager?.undo()
+                        return
+                    }
                     if command.hasPrefix("folder:") {
                         let index = Int(command.dropFirst(7)) ?? 0
                         if workspace.folders.indices.contains(index) {

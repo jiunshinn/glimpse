@@ -29,6 +29,11 @@ Glimpse fixes this. Double-click a file (or choose **Open With ▸ Glimpse**), a
 - **Fast**: images decode in the background. The next and previous images load before you need them. A thumbnail shows at once while the full image loads.
 - **Zoom and pan**: pinch, ⌥-scroll or the mouse wheel zooms at the pointer. Double-click switches between "fit" and a close-up. Drag to pan. 100% means one image pixel on one screen pixel.
 - **Drag out**: drag the image, a filmstrip thumbnail or a grid cell to Finder, Mail, a browser or any other app. When you zoom in, a drag pans, so use ⌘-drag. You can also drag the file icon next to the window title. A drop in Finder copies the file and does not move it.
+- **Drag and drop in Glimpse**: drag the image, a thumbnail or a grid cell to another place in Glimpse.
+  - Drop it on a folder in the sidebar to move the file into that folder. Hold ⌥ to copy it. A file goes to another disk as a copy, as in Finder.
+  - Drop it on a board in the sidebar to put it on the board.
+  - Hold it over a tab in the tab bar to open that tab. Then drop it in the tab: a folder tab gets the file in its folder, and a board tab puts it where you drop it.
+  - A file with the same name as a file in the folder gets a number, for example "photo 2.jpg". The star, the pin and the board items of a moved file stay with it. ⌘Z undoes the move or the copy.
 - **Modern UI**: Liquid Glass on macOS 26 (translucent materials on macOS 14–15), a blurred ambient background from the current image, and full screen with controls that hide.
 - **Videos**: MOV, MP4, M4V and other files that macOS can play show in the same folder sequence, with the system player controls. Seek, step by frame, change the speed and the volume from the keyboard, loop, and use picture in picture. A long video starts again where you stopped it. Thumbnails show the duration.
 - **Documents**: PDF, Word (DOCX, DOC), Excel (XLSX, XLS, CSV), PowerPoint (PPTX, PPT), Pages, Numbers, Keynote, RTF and OpenDocument files show in the same folder sequence. PDFs open with PDFKit: the whole page fits, and you can scroll, zoom, rotate, select text and unlock a protected file. Other documents show with Quick Look, so you do not need Office or iWork. Spreadsheets keep their sheet tabs.
@@ -251,6 +256,9 @@ Single-key shortcuts use the key position, so they also work with a non-Latin in
 | Drag the image (zoomed in) | Pan |
 | Drag the image (fit) / ⌘-drag the image (zoomed in) | Drag the file to another app |
 | Drag a filmstrip thumbnail or a grid cell | Drag the file to another app or a board |
+| Drop a file from Glimpse on a sidebar folder / on a folder tab | Move it into that folder (⌥: copy) |
+| Drop a file on a sidebar board | Put it on the board |
+| Hold a dragged file over a tab | Open that tab |
 | Drag the icon next to the window title | Drag the file to another app |
 | Drag the space around the image (fit) | Move the window |
 | Pointer near the left or right edge | Previous / next buttons |

@@ -342,10 +342,39 @@ final class ViewerModel {
         if OutgoingDrag.carries(urls) {
             OutgoingDrag.end()
             if containsAll(urls) { return false }
+            // A file from another tab moves into the folder of this tab.
+            if let folder = dropFolder { return transfer(urls, into: folder) }
         }
         guard let request = OpenRequest.make(from: urls).first else { return false }
         open(request)
         return true
+    }
+
+    /// The folder that a file from another tab goes into. Nil when the tab does not show a folder.
+    var dropFolder: URL? {
+        guard case .folder(let folder) = source else { return nil }
+        return folder
+    }
+
+    /// Moves the files into a folder, or copies them with ⌥ or to another disk. A toast tells the result.
+    /// Returns true if a file moved or was copied.
+    @discardableResult
+    func transfer(_ urls: [URL], into folder: URL, undoManager: UndoManager? = nil) -> Bool {
+        let files = urls.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == false }
+        guard !files.isEmpty else { return false }
+        let mode = FileMover.mode(for: files, into: folder)
+        let result = FileMover.transfer(files, into: folder, mode: mode,
+                                        undoManager: undoManager ?? canvas?.window?.undoManager)
+        let name = FileManager.default.displayName(atPath: folder.path)
+        if result.failed > 0 {
+            let verb = mode == .move ? "move" : "copy"
+            showToast(result.failed == 1 ? "Couldn’t \(verb) 1 file" : "Couldn’t \(verb) \(result.failed) files",
+                      symbol: "exclamationmark.triangle")
+        } else if !result.done.isEmpty {
+            let count = result.done.count == 1 ? result.done[0].to.lastPathComponent : "\(result.done.count) files"
+            showToast("\(mode.past) \(count) to \(name)", symbol: mode == .move ? "folder" : "plus.square.on.square")
+        }
+        return !result.done.isEmpty
     }
 
     /// True if all the files are in this tab.

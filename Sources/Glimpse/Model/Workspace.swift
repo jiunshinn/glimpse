@@ -266,6 +266,25 @@ final class Workspace {
         return pinned
     }
 
+    // MARK: - Moved files
+
+    /// Keeps the star, the pin and the board items of a file after Glimpse moves the file.
+    func fileMoved(from old: URL, to new: URL) {
+        let oldPath = old.standardizedFileURL.path
+        let newPath = new.standardizedFileURL.path
+        if stars.remove(oldPath) != nil { stars.insert(newPath) }
+        let wasPinned = pinnedFiles.remove(oldPath) != nil
+        if wasPinned { pinnedFiles.insert(newPath) }
+        for index in boards.indices {
+            for item in boards[index].items.indices where boards[index].items[item].path == oldPath {
+                boards[index].items[item].path = newPath
+            }
+        }
+        scheduleSave()
+        NotificationCenter.default.post(name: .workspaceFilesDidChange, object: self)
+        if wasPinned { NotificationCenter.default.post(name: .pinnedFilesDidChange, object: self) }
+    }
+
     // MARK: - Tags
 
     func tags(for url: URL) -> [FinderTag] {

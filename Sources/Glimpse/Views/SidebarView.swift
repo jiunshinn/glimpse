@@ -23,6 +23,8 @@ struct SidebarView: View {
     @State private var renamingBoard: UUID?
     @State private var boardName = ""
     @State private var deletingBoard: UUID?
+    /// The row under a drag.
+    @State private var dropTarget: SidebarItem?
 
     private var workspace: Workspace { .shared }
 
@@ -43,7 +45,9 @@ struct SidebarView: View {
                     folderLabel(folder)
                         .tag(SidebarItem.pinned(folder.url))
                         .contextMenu { folderMenu(folder, item: .pinned(folder.url)) }
-                        .dropDestination(for: URL.self) { urls, _ in pinFolders(urls) }
+                        .dropTarget(.pinned(folder.url), $dropTarget) { urls in
+                            drop(urls, into: folder.url, folders: pinFolders)
+                        }
                 }
             } header: {
                 Text("Favorites")
@@ -57,6 +61,9 @@ struct SidebarView: View {
                         .badge(workspace.count(in: folder.url))
                         .tag(SidebarItem.folder(folder.url))
                         .contextMenu { folderMenu(folder, item: .folder(folder.url)) }
+                        .dropTarget(.folder(folder.url), $dropTarget) { urls in
+                            drop(urls, into: folder.url) { !workspace.addFolders($0).isEmpty }
+                        }
                 }
                 .onMove { workspace.moveFolders(from: $0, to: $1) }
 
@@ -98,6 +105,7 @@ struct SidebarView: View {
                             }
                             Button("Delete Board…", role: .destructive) { deletingBoard = board.id }
                         }
+                        .dropTarget(.board(board.id), $dropTarget) { urls in drop(urls, on: board) }
                 }
 
                 Button {
@@ -164,6 +172,26 @@ struct SidebarView: View {
     }
 
     /// A folder dropped on Favorites is pinned. A folder that is not in the workspace is added first.
+    /// Files move into the folder (⌥ copies them). Folders go to `folders`, as before.
+    private func drop(_ urls: [URL], into folder: URL, folders: ([URL]) -> Bool) -> Bool {
+        OutgoingDrag.end()
+        let isFolder = { (url: URL) in (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
+        guard urls.contains(where: { !isFolder($0) }) else { return folders(urls) }
+        guard let controller = tab.controller else { return false }
+        return controller.model.transfer(urls, into: folder, undoManager: controller.window?.undoManager)
+    }
+
+    private func drop(_ urls: [URL], on board: Board) -> Bool {
+        OutgoingDrag.end()
+        let files = urls.filter(FolderScanner.canOpen)
+        guard !files.isEmpty else { return false }
+        let added = workspace.add(files, to: board.id)
+        let message = added == 0 ? "Already on \(board.name)"
+            : added == 1 ? "Added 1 file to \(board.name)" : "Added \(added) files to \(board.name)"
+        tab.controller?.model.showToast(message, symbol: "rectangle.3.group")
+        return added > 0
+    }
+
     private func pinFolders(_ urls: [URL]) -> Bool {
         var pinned = false
         for url in urls where !workspace.isFolderPinned(url) {
@@ -224,5 +252,30 @@ struct SidebarView: View {
 
     private var isDeleting: Binding<Bool> {
         Binding { deletingBoard != nil } set: { if !$0 { deletingBoard = nil } }
+    }
+}
+
+private extension View {
+    /// Accepts dropped files on a sidebar row, and marks the row while a drag is over it.
+    func dropTarget(_ item: SidebarItem, _ target: Binding<SidebarItem?>,
+                    perform: @escaping ([URL]) -> Bool) -> some View {
+        frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .background {
+                if target.wrappedValue == item {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.3))
+                        .padding(-4)
+                }
+            }
+            .dropDestination(for: URL.self) { urls, _ in
+                perform(urls)
+            } isTargeted: { isTargeted in
+                if isTargeted {
+                    target.wrappedValue = item
+                } else if target.wrappedValue == item {
+                    target.wrappedValue = nil
+                }
+            }
     }
 }
