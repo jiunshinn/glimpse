@@ -13,10 +13,12 @@ struct FilmstripView: View {
                 LazyHStack(spacing: spacing) {
                     ForEach(Array(model.items.enumerated()), id: \.element.id) { offset, item in
                         FilmstripCell(url: item.url, isSelected: offset == model.index, size: cellSize,
-                                      isNew: Workspace.shared.newFiles.contains(item.url))
+                                      isNew: Workspace.shared.newFiles.contains(item.url),
+                                      isPinned: Workspace.shared.isFilePinned(item.url))
                             .id(item.id)
                             .onTapGesture { model.go(to: offset) }
                             .onDrag { OutgoingDrag.itemProvider(for: item.url) }
+                            .contextMenu { FileContextMenu(model: model, url: item.url) }
                             .help(item.name)
                     }
                 }
@@ -50,6 +52,7 @@ private struct FilmstripCell: View {
     let isSelected: Bool
     let size: CGFloat
     let isNew: Bool
+    let isPinned: Bool
 
     @State private var isHovered = false
 
@@ -67,6 +70,16 @@ private struct FilmstripCell: View {
                         .fill(Color.green)
                         .frame(width: 8, height: 8)
                         .overlay(Circle().strokeBorder(Color.black.opacity(0.4), lineWidth: 1))
+                        .padding(4)
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.orange)
+                        .rotationEffect(.degrees(45))
+                        .shadow(color: .black.opacity(0.7), radius: 1.5)
                         .padding(4)
                 }
             }

@@ -28,7 +28,7 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: selection) {
-            Section("Favorites") {
+            Section {
                 Label {
                     Text("Starred")
                 } icon: {
@@ -37,12 +37,18 @@ struct SidebarView: View {
                 .badge(workspace.stars.count)
                 .tag(SidebarItem.smart(.starred))
                 .contextMenu { openInNewTab(.smart(.starred)) }
+                .dropDestination(for: URL.self) { urls, _ in pinFolders(urls) }
 
                 ForEach(workspace.folders.filter(\.isPinned)) { folder in
                     folderLabel(folder)
                         .tag(SidebarItem.pinned(folder.url))
                         .contextMenu { folderMenu(folder, item: .pinned(folder.url)) }
+                        .dropDestination(for: URL.self) { urls, _ in pinFolders(urls) }
                 }
+            } header: {
+                Text("Favorites")
+                    .dropDestination(for: URL.self) { urls, _ in pinFolders(urls) }
+                    .help("Drop a folder here to pin it")
             }
 
             Section("Folders") {
@@ -151,10 +157,19 @@ struct SidebarView: View {
         openInNewTab(item)
         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder.url]) }
         Divider()
-        Button(folder.isPinned ? "Remove from Favorites" : "Add to Favorites") {
+        Button(folder.isPinned ? "Unpin from Favorites" : "Pin to Favorites") {
             workspace.setPinned(!folder.isPinned, for: folder.url)
         }
         Button("Remove from Workspace") { workspace.removeFolder(folder.url) }
+    }
+
+    /// A folder dropped on Favorites is pinned. A folder that is not in the workspace is added first.
+    private func pinFolders(_ urls: [URL]) -> Bool {
+        var pinned = false
+        for url in urls where !workspace.isFolderPinned(url) {
+            if workspace.toggleFolderPin(url) == true { pinned = true }
+        }
+        return pinned
     }
 
     private func openInNewTab(_ item: SidebarItem) -> some View {

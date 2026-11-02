@@ -26,6 +26,8 @@ struct WorkspaceFolder: Identifiable, Hashable {
 extension Notification.Name {
     /// Posted when stars, tags or the files of the workspace folders change.
     static let workspaceFilesDidChange = Notification.Name("Glimpse.workspaceFilesDidChange")
+    /// Posted when a file is pinned or unpinned. The viewers sort their files again.
+    static let pinnedFilesDidChange = Notification.Name("Glimpse.pinnedFilesDidChange")
 }
 
 /// The folders, stars, tags and boards that all windows share, and the tabs that open again at launch.
@@ -37,6 +39,8 @@ final class Workspace {
     private(set) var folders: [WorkspaceFolder] = []
     /// The paths of the starred files.
     private(set) var stars: Set<String> = []
+    /// The paths of the pinned files. A pinned file comes first in its folder, in all sort orders.
+    private(set) var pinnedFiles: Set<String> = []
     private(set) var boards: [Board] = []
     /// The board that B and "Add to Board" use.
     private(set) var lastBoardID: UUID?
@@ -146,6 +150,23 @@ final class Workspace {
         scheduleSave()
     }
 
+    func isFolderPinned(_ url: URL) -> Bool {
+        folder(for: url)?.isPinned ?? false
+    }
+
+    /// Pins a folder to Favorites, or unpins it. A folder that is not in the workspace is added first.
+    /// Returns true if the folder is pinned now, or nil if Glimpse cannot add the folder.
+    @discardableResult
+    func toggleFolderPin(_ url: URL) -> Bool? {
+        if isFolderPinned(url) {
+            setPinned(false, for: url)
+            return false
+        }
+        guard contains(folder: url) || !addFolders([url]).isEmpty else { return nil }
+        setPinned(true, for: url)
+        return true
+    }
+
     func moveFolders(from source: IndexSet, to destination: Int) {
         folders.move(fromOffsets: source, toOffset: destination)
         scheduleSave()
@@ -226,6 +247,23 @@ final class Workspace {
         scheduleSave()
         NotificationCenter.default.post(name: .workspaceFilesDidChange, object: self)
         return starred
+    }
+
+    // MARK: - Pinned files
+
+    func isFilePinned(_ url: URL) -> Bool {
+        pinnedFiles.contains(url.standardizedFileURL.path)
+    }
+
+    /// Returns true if the file is pinned now.
+    @discardableResult
+    func toggleFilePin(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        let pinned = !pinnedFiles.contains(path)
+        if pinned { pinnedFiles.insert(path) } else { pinnedFiles.remove(path) }
+        scheduleSave()
+        NotificationCenter.default.post(name: .pinnedFilesDidChange, object: self)
+        return pinned
     }
 
     // MARK: - Tags
@@ -425,6 +463,7 @@ final class Workspace {
     private struct Stored: Codable {
         var folders: [StoredFolder] = []
         var stars: [String] = []
+        var pinnedFiles: [String] = []
         var boards: [Board] = []
         var lastBoardID: UUID?
         var reopenAtLaunch = true
@@ -436,6 +475,7 @@ final class Workspace {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             folders = try container.decodeIfPresent([StoredFolder].self, forKey: .folders) ?? []
             stars = try container.decodeIfPresent([String].self, forKey: .stars) ?? []
+            pinnedFiles = try container.decodeIfPresent([String].self, forKey: .pinnedFiles) ?? []
             boards = try container.decodeIfPresent([Board].self, forKey: .boards) ?? []
             lastBoardID = try container.decodeIfPresent(UUID.self, forKey: .lastBoardID)
             reopenAtLaunch = try container.decodeIfPresent(Bool.self, forKey: .reopenAtLaunch) ?? true
@@ -480,6 +520,7 @@ final class Workspace {
             bookmarks[url] = bookmark
         }
         stars = Set(stored.stars)
+        pinnedFiles = Set(stored.pinnedFiles)
         boards = stored.boards
         lastBoardID = stored.lastBoardID
         reopenAtLaunch = stored.reopenAtLaunch
@@ -501,6 +542,7 @@ final class Workspace {
         var stored = Stored()
         stored.folders = folders.map { StoredFolder(path: $0.url.path, bookmark: bookmarks[$0.url], pinned: $0.isPinned) }
         stored.stars = stars.sorted()
+        stored.pinnedFiles = pinnedFiles.sorted()
         stored.boards = boards
         stored.lastBoardID = lastBoardID
         stored.reopenAtLaunch = reopenAtLaunch

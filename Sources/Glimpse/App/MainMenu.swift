@@ -118,7 +118,7 @@ enum MainMenu {
         return menu
     }
 
-    /// Single keys (S, B, 1 to 5) work while the viewer or the grid shows.
+    /// Single keys (S, P, ⇧P, B, 1 to 5) work while the viewer or the grid shows.
     private static func workspaceMenu() -> NSMenu {
         typealias Controller = ViewerWindowController
         let menu = NSMenu(title: "Workspace")
@@ -126,7 +126,9 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Add Folder to Workspace…", #selector(AppDelegate.addFolderToWorkspace(_:)), "o", [.command, .shift]))
         menu.addItem(item("Add Current Folder to Workspace", #selector(Controller.addCurrentFolderToWorkspace(_:))))
+        menu.addItem(item("Pin Folder to Favorites", #selector(Controller.toggleFolderPin(_:)), "p", [.shift]))
         menu.addItem(.separator())
+        menu.addItem(item("Pin to Top", #selector(Controller.toggleFilePin(_:)), "p", []))
         menu.addItem(item("Star", #selector(Controller.toggleStar(_:)), "s", []))
         let tags = NSMenuItem(title: "Tags", action: nil, keyEquivalent: "")
         let tagMenu = NSMenu(title: "Tags")

@@ -247,6 +247,12 @@ private struct QuickSearchRow: View {
                         .font(.system(size: 10))
                         .foregroundStyle(.yellow)
                 }
+                if workspace.isFilePinned(item.url) {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.orange)
+                        .rotationEffect(.degrees(45))
+                }
             }
         } else if case .command = result.kind, !result.accessory.isEmpty {
             KeyCap(result.accessory)

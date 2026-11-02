@@ -372,7 +372,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             }
         }
         // A pinned folder in Favorites shows the same folder as its row in Folders.
-        if case .pinned(let url) = tab.sidebarSelection, case .folder(let folder) = canonical, url == folder { return }
+        if case .pinned(let url) = tab.sidebarSelection, case .folder(let folder) = canonical, url == folder,
+           Workspace.shared.isFolderPinned(folder) { return }
         if tab.sidebarSelection != canonical { tab.sidebarSelection = canonical }
     }
 
@@ -501,6 +502,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         case "-", "_": model.zoomOut()
         case "?", "/": model.showShortcuts.toggle()
         case "s": model.toggleStar()
+        case "p": shift ? model.toggleFolderPin() : model.toggleFilePin()
         case "b": addCurrentToBoard()
         case let digit? where ("1"..."5").contains(digit):
             guard let number = digit.wholeNumberValue else { return false }
@@ -646,6 +648,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     @objc func clearFilter(_ sender: Any?) { model.filter = TypeFilter() }
     @objc func toggleStar(_ sender: Any?) { model.toggleStar() }
+    @objc func toggleFilePin(_ sender: Any?) { model.toggleFilePin() }
+    @objc func toggleFolderPin(_ sender: Any?) { model.toggleFolderPin() }
     @objc func addCurrentFileToBoard(_ sender: Any?) { addCurrentToBoard() }
 
     /// The tag of the menu item is the position of the tag in the quick tags.
@@ -767,6 +771,18 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             let starred = model.current.map { Workspace.shared.isStarred($0.url) } ?? false
             item.title = starred ? "Remove Star" : "Star"
             return hasImage
+        case #selector(toggleFilePin(_:)):
+            let pinned = model.current.map { Workspace.shared.isFilePinned($0.url) } ?? false
+            item.title = pinned ? "Unpin from Top" : "Pin to Top"
+            return hasImage
+        case #selector(toggleFolderPin(_:)):
+            guard tab.boardID == nil, let folder = model.currentFolder else {
+                item.title = "Pin Folder to Favorites"
+                return false
+            }
+            let name = FileManager.default.displayName(atPath: folder.path)
+            item.title = Workspace.shared.isFolderPinned(folder) ? "Unpin “\(name)” from Favorites" : "Pin “\(name)” to Favorites"
+            return true
         case #selector(toggleTag(_:)):
             let tag = FinderTag.quickTags.indices.contains(item.tag) ? FinderTag.quickTags[item.tag] : nil
             item.state = model.current.flatMap { url in tag.map { Workspace.shared.hasTag($0.name, url.url) } } == true ? .on : .off
@@ -988,6 +1004,7 @@ extension ViewerWindowController {
             "home": (kVK_Home, NSHomeFunctionKey), "end": (kVK_End, NSEndFunctionKey), "space": (kVK_Space, 0x20),
             "return": (kVK_Return, 0x0D), "escape": (kVK_Escape, 0x1B), "delete": (kVK_Delete, 0x7F),
             "s": (kVK_ANSI_S, 0x73), "b": (kVK_ANSI_B, 0x62), "1": (kVK_ANSI_1, 0x31), "2": (kVK_ANSI_2, 0x32),
+            "p": (kVK_ANSI_P, 0x70),
         ]
         let shift = name.hasPrefix("shift+")
         guard let window, let key = keys[shift ? String(name.dropFirst(6)) : name],
@@ -1011,7 +1028,7 @@ enum KeyboardLayout {
         kVK_ANSI_Equal: "=", kVK_ANSI_Minus: "-", kVK_ANSI_Slash: "/",
         kVK_ANSI_J: "j", kVK_ANSI_K: "k", kVK_ANSI_L: "l", kVK_ANSI_M: "m",
         kVK_ANSI_Comma: ",", kVK_ANSI_Period: ".", kVK_ANSI_LeftBracket: "[", kVK_ANSI_RightBracket: "]",
-        kVK_ANSI_Backslash: "\\", kVK_ANSI_S: "s", kVK_ANSI_B: "b",
+        kVK_ANSI_Backslash: "\\", kVK_ANSI_S: "s", kVK_ANSI_B: "b", kVK_ANSI_P: "p",
         kVK_ANSI_1: "1", kVK_ANSI_2: "2", kVK_ANSI_3: "3", kVK_ANSI_4: "4", kVK_ANSI_5: "5",
     ]
 

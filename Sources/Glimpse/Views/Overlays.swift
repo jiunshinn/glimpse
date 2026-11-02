@@ -115,6 +115,8 @@ struct ShortcutsOverlay: View {
         ("Workspace", [
             ("⌘K", "Quick Search"),
             ("S", "Star or unstar"),
+            ("P", "Pin to the top of the folder"),
+            ("⇧P", "Pin the folder to Favorites"),
             ("1 – 5", "Tags: Keep, Edit, Client, Print, Reject"),
             ("B", "Add to the board"),
             ("⌘T", "New tab"),
@@ -152,11 +154,11 @@ struct ShortcutsOverlay: View {
                         group(6)
                     }
                     GridRow {
-                        group(2)
-                        group(3)
-                    }
-                    GridRow {
                         group(5)
+                        VStack(alignment: .leading, spacing: 20) {
+                            group(2)
+                            group(3)
+                        }
                     }
                 }
             }

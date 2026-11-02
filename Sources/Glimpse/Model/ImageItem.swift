@@ -84,7 +84,9 @@ enum FolderScanner {
     ]
 
     /// Returns the sorted images, videos and documents of the source, or nil if the folder cannot be read.
-    static func scan(_ source: ImageSource, sortedBy key: SortKey, ascending: Bool) -> [ImageItem]? {
+    /// The files with a path in `pinned` come first.
+    static func scan(_ source: ImageSource, sortedBy key: SortKey, ascending: Bool,
+                     pinned: Set<String> = []) -> [ImageItem]? {
         let items: [ImageItem]
         switch source {
         case .folder(let folder):
@@ -100,7 +102,7 @@ enum FolderScanner {
             // The viewer model turns a smart list into files before it scans.
             items = []
         }
-        return sorted(items, by: key, ascending: ascending)
+        return sorted(items, by: key, ascending: ascending, pinned: pinned)
     }
 
     static func item(for url: URL) -> ImageItem? {
@@ -133,7 +135,15 @@ enum FolderScanner {
         return DocumentDecoder.isDocument(type) ? .document : .video
     }
 
-    static func sorted(_ items: [ImageItem], by key: SortKey, ascending: Bool) -> [ImageItem] {
+    /// Sorts the files. The pinned files come first, in the same order among themselves.
+    static func sorted(_ items: [ImageItem], by key: SortKey, ascending: Bool, pinned: Set<String> = []) -> [ImageItem] {
+        let sorted = sortedByKey(items, key, ascending: ascending)
+        guard !pinned.isEmpty else { return sorted }
+        let isPinned = { (item: ImageItem) in pinned.contains(item.url.path) }
+        return sorted.filter(isPinned) + sorted.filter { !isPinned($0) }
+    }
+
+    private static func sortedByKey(_ items: [ImageItem], _ key: SortKey, ascending: Bool) -> [ImageItem] {
         items.sorted { a, b in
             let order: ComparisonResult
             switch key {

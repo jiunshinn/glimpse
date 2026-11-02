@@ -35,7 +35,7 @@ Glimpse fixes this. Double-click a file (or choose **Open With ▸ Glimpse**), a
 - **Info panel**: dimensions, color profile, camera, lens, exposure, date taken and GPS location (press **I**). For videos: duration, frame rate, codec, HDR, bit rate and audio. For documents: pages, page size, title, author and the app that made the file.
 - **Clean up a folder**: ⌘⌫ moves the file to the Trash and shows the next one. ⌘Z puts it back.
 - **Live folder**: new, removed and renamed files show up at once.
-- **Sort**: by name, date modified, date created or size, ascending or descending.
+- **Sort**: by name, date modified, date created or size, ascending or descending. Pinned files come first in every sort order (see **Pins** under [Workspace](#workspace)).
 - **Formats**:
   - Images: everything that macOS can read, including JPEG, PNG, HEIC/HEIF, AVIF, WebP, GIF (animated), TIFF, BMP, PSD, ICNS and camera RAW. EXIF orientation is applied.
   - Videos: everything that macOS can play, including MOV, MP4, M4V, 3GP, AVI and MPEG.
@@ -47,7 +47,7 @@ Glimpse fixes this. Double-click a file (or choose **Open With ▸ Glimpse**), a
 A workspace is a list of folders that you add. The sidebar shows them, and all windows and tabs share them. The files stay where they are.
 
 - **Sidebar** (⌃⌘S): four sections with file counts.
-  - **Favorites**: **Starred** (the starred files of all folders) and the folders that you pin.
+  - **Favorites**: **Starred** (the starred files of all folders) and the folders that you pin. To pin a folder, press **⇧P**, or drop the folder on Favorites. See **Pins** below.
   - **Folders**: the folders of the workspace. Add a folder with **Add Folder…** (⇧⌘O), with the **+** row, or drop a folder on the sidebar. Drag a folder to change the order. Glimpse keeps a bookmark to each folder, so a moved or renamed folder still opens. A folder that Glimpse cannot read shows a warning symbol.
   - **Tags**: Keep, Edit, Client, Print and Reject, then the other Finder tags of the files in the workspace. A tag shows all the files with that tag, from all folders.
   - **Boards**: your boards, and **New Board**.
@@ -59,7 +59,11 @@ A workspace is a list of folders that you add. The sidebar shows them, and all w
 - **File type filter**: the **File Types** toolbar button and **View ▸ File Types** show only images, videos or documents. The toolbar menu also shows each format with its count (for example HEIC, DNG, MP4 and PDF), so you can show only some formats. The filmstrip, the grid and the arrow keys obey the filter. The toolbar button is filled while a filter is on, and the window subtitle shows the filter. If the filter hides all files, the window shows a **Show All Types** button. A tab that opens a different folder starts with no filter.
 - **Tags**: **1** to **5** add or remove the tags Keep, Edit, Client, Print and Reject. Glimpse writes Finder tags with their colors, so Finder and Spotlight show the same tags. When Glimpse becomes active, it reads the tags again, so changes from Finder show too.
 - **Stars**: **S** stars a file or removes the star. Starred files show in **Favorites ▸ Starred**.
-- **Marks**: the grid shows a star and color dots for the tags. The window subtitle shows them for the current file, for example `3 of 10 · ★ · Keep, Print`.
+- **Pins**:
+  - **P** pins the current file to the top of its folder, or unpins it. A pinned file comes first in the viewer, the filmstrip, the grid and the arrow-key order, in every sort order. If you pin more than one file, the pinned files keep the sort order among themselves. An unpinned file goes back to its sorted place.
+  - **⇧P** pins the folder of the current tab to **Favorites** in the sidebar, or unpins it. In a list of files (for example Starred), it uses the folder of the current file. If the workspace does not have the folder, Glimpse adds it. You can also drop a folder on Favorites, or right-click a folder in the sidebar.
+  - You can also use the **Workspace** menu, Quick Search, or the context menu of a grid cell or a filmstrip thumbnail.
+- **Marks**: the grid shows a pin, a star and color dots for the tags. The filmstrip shows the pin. The window subtitle shows them for the current file, for example `3 of 10 · Pinned · ★ · Keep, Print`.
 - **Boards**: a free canvas for files from different folders, and for notes. A board keeps references to the files, not copies. See [Boards](#boards).
 - **Reopen at launch**: Glimpse saves the tabs of each window, and the current file, the view and the filter of each tab. At the next launch, the same tabs open. Turn this off with the switch at the bottom of the sidebar or with **Workspace ▸ Reopen Tabs at Launch**.
 - **Storage**: the workspace (folders, pins, stars, boards and saved tabs) is in `~/Library/Application Support/Glimpse/Workspace.json`. Tags are in the files, as Finder tags.
@@ -86,6 +90,7 @@ Filters (you can use more than one, with or without other words):
 | `tag:keep` | Files with a tag. The start of the tag name is enough (`tag:ke`) |
 | `in:drone` | Files in folders with this text in the name |
 | `is:starred` | Starred files |
+| `is:pinned` | Pinned files |
 | `is:new` | Files that arrived while Glimpse was open and that you did not view yet |
 
 Commands:
@@ -102,6 +107,8 @@ Commands:
 | Turn On / Turn Off Reopen at Launch | Changes the Reopen at Launch setting |
 | Show or Hide the Sidebar | Same as ⌃⌘S |
 | Show the Grid or the Viewer | Same as G |
+| Pin “*file*” to the Top / Unpin “*file*” from the Top | Same as P |
+| Pin “*folder*” to Favorites / Unpin “*folder*” from Favorites | Same as ⇧P |
 
 In a new tab, ↵ opens the result in that tab. In **Add Files to Board** mode, Quick Search shows only files, and ↵ puts the file on the board.
 
@@ -186,6 +193,8 @@ Workspace and tabs:
 | ⇧⌘O | Add a folder to the workspace |
 | ⌃⌘S | Show or hide the sidebar |
 | S | Star or unstar the file |
+| P | Pin the file to the top of its folder, or unpin it |
+| ⇧P | Pin the folder to Favorites, or unpin it |
 | 1 – 5 | Add or remove a tag: 1 Keep, 2 Edit, 3 Client, 4 Print, 5 Reject |
 | B | Put the file on the board |
 | ⌘T | New tab |
@@ -252,6 +261,8 @@ Single-key shortcuts use the key position, so they also work with a non-Latin in
 | Click a sidebar row | Open it in this tab, or go to the tab that shows it |
 | ⌘-click a sidebar row | Open it in a new tab |
 | Drop a folder on the sidebar | Add it to the workspace |
+| Drop a folder on Favorites | Pin it (Glimpse adds it to the workspace if necessary) |
+| Right-click a grid cell or a filmstrip thumbnail | Pin, star, Show in Finder, pin the folder |
 | Drag a folder row | Change the order of the folders |
 | Drop files on a board | Put them on the board at that place |
 | Drag a board item / its corner | Move / resize the item |
@@ -312,6 +323,8 @@ Single-key shortcuts use the key position, so they also work with a non-Latin in
 | Quick Search… | ⌘K | Opens or closes Quick Search |
 | Add Folder to Workspace… | ⇧⌘O | Adds folders to the sidebar |
 | Add “*folder*” to Workspace | | Adds the folder of the current tab |
+| Pin “*folder*” to Favorites / Unpin “*folder*” from Favorites | ⇧P | Pins the folder of the current tab to Favorites, or unpins it |
+| Pin to Top / Unpin from Top | P | Pins the current file to the top of its folder, or unpins it |
 | Star / Remove Star | S | Stars the current file, or removes the star |
 | Tags ▸ Keep, Edit, Client, Print, Reject | 1 – 5 | Adds or removes a Finder tag. A check mark shows the tags of the file |
 | Add to Board | B | Puts the current file on the board |
@@ -375,7 +388,8 @@ On a board:
 
 | Where | Commands |
 | --- | --- |
-| A folder in the sidebar | Open in New Tab, Show in Finder, Add to Favorites / Remove from Favorites, Remove from Workspace |
+| A folder in the sidebar | Open in New Tab, Show in Finder, Pin to Favorites / Unpin from Favorites, Remove from Workspace |
+| A file in the grid or the filmstrip | Pin to Top / Unpin from Top, Star / Remove Star, Show in Finder, Pin “*folder*” to Favorites / Unpin “*folder*” from Favorites |
 | Starred or a tag in the sidebar | Open in New Tab |
 | A board in the sidebar | Open in New Tab, Rename…, Delete Board… |
 | A file on a board | Open, Show in Finder, Remove from Board |
@@ -397,6 +411,7 @@ Sources/Glimpse
 
 - One tab shows one folder. Opening one file scans its folder. Opening several files shows only those files. Each tab is a window in a macOS tab group, with its own viewer model.
 - The workspace (`Workspace`) is shared by all tabs. It scans each workspace folder in the background, watches it with a file system event source, and reads the Finder tags (the `com.apple.metadata:_kMDItemUserTags` attribute) of its files. Starred files and tag lists are smart lists: Glimpse collects their files from the workspace folders and updates them when the folders, the stars or the tags change.
+- Pins are paths in the workspace file. `FolderScanner` sorts the files by the sort key, then moves the pinned files to the start. When a pin changes, every tab sorts its files again and keeps the current file.
 - The sidebar is the sidebar item of an `NSSplitViewController`, so it gets the floating Liquid Glass sidebar on macOS 26. Quick Search and boards are SwiftUI. Board items use larger previews (1200 pixels) from a separate cache.
 - Videos play with AVKit's `AVPlayerView`. One `AVPlayer` serves a window, so the volume and the speed stay the same from video to video. Video thumbnails come from `AVAssetImageGenerator` through the same thumbnail cache as images.
 - PDFs show in PDFKit's `PDFView`. Other documents show in Quick Look's `QLPreviewView`, which uses the previews that macOS includes. Document thumbnails come from `QLThumbnailGenerator`. Plain text files are not part of the sequence, because a text file next to photos is usually a note.

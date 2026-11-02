@@ -111,25 +111,30 @@ final class ViewerModel {
     @ObservationIgnored private var chromeTask: Task<Void, Never>?
     @ObservationIgnored private var lastActivity = Date.distantPast
     @ObservationIgnored private var direction = 1
-    @ObservationIgnored nonisolated(unsafe) private var workspaceObserver: NSObjectProtocol?
+    @ObservationIgnored nonisolated(unsafe) private var workspaceObservers: [NSObjectProtocol] = []
     /// The unrotated image that the canvas shows (a thumbnail or the full image).
     @ObservationIgnored private var base: (url: URL, image: CGImage, animated: NSImage?, pixelSize: CGSize)?
 
     init() {
         video.onFailure = { [weak self] in self?.loadFailed = true }
-        // A smart list collects files from all workspace folders. It changes when they change.
-        workspaceObserver = NotificationCenter.default.addObserver(
-            forName: .workspaceFilesDidChange, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, case .smart = self.source else { return }
-                self.reload(selecting: nil)
-            }
-        }
+        let center = NotificationCenter.default
+        workspaceObservers = [
+            // A smart list collects files from all workspace folders. It changes when they change.
+            center.addObserver(forName: .workspaceFilesDidChange, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, case .smart = self.source else { return }
+                    self.reload(selecting: nil)
+                }
+            },
+            // A pinned file moves to the start of the list. An unpinned file goes back to its sorted place.
+            center.addObserver(forName: .pinnedFilesDidChange, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.resort() }
+            },
+        ]
     }
 
     deinit {
-        if let workspaceObserver { NotificationCenter.default.removeObserver(workspaceObserver) }
+        workspaceObservers.forEach(NotificationCenter.default.removeObserver)
     }
 
     // MARK: - Derived state
@@ -194,6 +199,12 @@ final class ViewerModel {
         }
     }
 
+    /// The folder that Pin Folder uses: the folder of the tab, or the folder of the current file in a list of files.
+    var currentFolder: URL? {
+        if case .folder(let url) = source { return url }
+        return current?.url.deletingLastPathComponent()
+    }
+
     var windowTitle: String {
         if isGridMode || current == nil { return collectionName }
         return current?.name ?? collectionName
@@ -214,6 +225,7 @@ final class ViewerModel {
             }
             if let url = current?.url {
                 let workspace = Workspace.shared
+                if workspace.isFilePinned(url) { parts.append("Pinned") }
                 if workspace.isStarred(url) { parts.append("★") }
                 let tags = workspace.tags(for: url).map(\.name)
                 if !tags.isEmpty { parts.append(tags.joined(separator: ", ")) }
@@ -347,6 +359,7 @@ final class ViewerModel {
         isScanning = true
         let key = sortKey
         let ascending = sortAscending
+        let pinned = Workspace.shared.pinnedFiles
         // A smart list becomes the list of its files now. The scan runs in the background.
         let scanned: ImageSource
         if case .smart(let list) = source {
@@ -357,10 +370,12 @@ final class ViewerModel {
         scanTask?.cancel()
         scanTask = Task { [weak self] in
             let scanned = await Task.detached(priority: .userInitiated) {
-                FolderScanner.scan(scanned, sortedBy: key, ascending: ascending)
+                FolderScanner.scan(scanned, sortedBy: key, ascending: ascending, pinned: pinned)
             }.value
             guard let self, !Task.isCancelled, self.source == source else { return }
             self.apply(scanned, selecting: url)
+            // A pin that changed during the scan moves its file now.
+            if Workspace.shared.pinnedFiles != pinned { self.resort() }
         }
     }
 
@@ -397,7 +412,8 @@ final class ViewerModel {
 
     private func resort() {
         let selected = current?.url
-        allItems = FolderScanner.sorted(allItems, by: sortKey, ascending: sortAscending)
+        allItems = FolderScanner.sorted(allItems, by: sortKey, ascending: sortAscending,
+                                        pinned: Workspace.shared.pinnedFiles)
         items = allItems.filter(filter.allows)
         if let selected, let found = items.firstIndex(where: { $0.url == selected }) {
             index = found
@@ -864,12 +880,30 @@ final class ViewerModel {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
-    // MARK: - Stars and tags
+    // MARK: - Stars, pins and tags
 
-    func toggleStar() {
-        guard let url = current?.url else { return }
+    /// Stars a file, or removes the star. Without a URL, it uses the current file.
+    func toggleStar(_ url: URL? = nil) {
+        guard let url = url ?? current?.url else { return }
         let starred = Workspace.shared.toggleStar(url)
         showToast(starred ? "Starred" : "Star removed", symbol: starred ? "star.fill" : "star.slash")
+    }
+
+    /// Pins a file to the top of its folder, or unpins it. Without a URL, it uses the current file.
+    func toggleFilePin(_ url: URL? = nil) {
+        guard let url = url ?? current?.url else { return }
+        let pinned = Workspace.shared.toggleFilePin(url)
+        showToast(pinned ? "Pinned to the top" : "Unpinned", symbol: pinned ? "pin.fill" : "pin.slash")
+    }
+
+    /// Pins a folder to Favorites, or unpins it. Without a URL, it uses the current folder.
+    func toggleFolderPin(_ url: URL? = nil) {
+        guard let url = url ?? currentFolder else { return }
+        switch Workspace.shared.toggleFolderPin(url) {
+        case true?: showToast("Pinned to Favorites", symbol: "pin.fill")
+        case false?: showToast("Unpinned from Favorites", symbol: "pin.slash")
+        case nil: showToast("Couldn’t pin this folder", symbol: "exclamationmark.triangle")
+        }
     }
 
     func toggleTag(_ tag: FinderTag) {
