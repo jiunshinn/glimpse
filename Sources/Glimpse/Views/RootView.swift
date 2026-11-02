@@ -3,6 +3,8 @@ import SwiftUI
 struct RootView: View {
     let model: ViewerModel
     @State private var isDropTargeted = false
+    /// What a drop does, when a file from another tab goes into the folder of this tab.
+    @State private var dropLabel: String?
 
     var body: some View {
         ZStack {
@@ -49,7 +51,7 @@ struct RootView: View {
             }
 
             if isDropTargeted && model.hasItems {
-                DropHighlight()
+                DropHighlight(label: dropLabel)
             }
         }
         .ignoresSafeArea()
@@ -58,7 +60,14 @@ struct RootView: View {
             model.handleDrop(urls)
         } isTargeted: { targeted in
             // Do not offer to open the files of a drag that started in this tab.
-            isDropTargeted = targeted && !(OutgoingDrag.isActive && model.containsAll(OutgoingDrag.urls))
+            let isOwn = OutgoingDrag.isActive
+            isDropTargeted = targeted && !(isOwn && model.containsAll(OutgoingDrag.urls))
+            dropLabel = nil
+            if isDropTargeted, isOwn, let folder = model.dropFolder {
+                let name = FileManager.default.displayName(atPath: folder.path)
+                dropLabel = FileMover.mode(for: OutgoingDrag.urls, into: folder) == .move
+                    ? "Move to \(name) · ⌥ copies" : "Copy to \(name)"
+            }
         }
         .animation(.smooth(duration: 0.28), value: model.isGridMode)
         .animation(.smooth(duration: 0.28), value: model.showInfo)
@@ -120,10 +129,21 @@ struct AmbientBackdrop: View {
 }
 
 struct DropHighlight: View {
+    var label: String?
+
     var body: some View {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
             .strokeBorder(Color.accentColor, lineWidth: 3)
             .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                if let label {
+                    Label(label, systemImage: "folder")
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .glassSurface(Capsule())
+                }
+            }
             .padding(10)
             .allowsHitTesting(false)
     }
