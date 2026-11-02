@@ -124,7 +124,11 @@ final class QuickSearchModel {
             files = files.filter { Self.folderName(of: $0.url).lowercased().contains(folder) }
         }
         if let state = filters["is"] {
-            files = files.filter { !state.isEmpty && "new".hasPrefix(state) ? workspace.newFiles.contains($0.url) : workspace.isStarred($0.url) }
+            files = files.filter { item in
+                if !state.isEmpty && "new".hasPrefix(state) { return workspace.newFiles.contains(item.url) }
+                if !state.isEmpty && "pinned".hasPrefix(state) { return workspace.isFilePinned(item.url) }
+                return workspace.isStarred(item.url)
+            }
         }
 
         var groups: [Group] = []
@@ -249,6 +253,23 @@ final class QuickSearchModel {
                                          detail: "Switch between the grid of the folder and one file.") {
                 $0.model.toggleGrid()
             })
+            if let file = controller?.model.current {
+                let pinned = workspace.isFilePinned(file.url)
+                commands.append(QuickCommand(title: pinned ? "Unpin “\(file.name)” from the Top" : "Pin “\(file.name)” to the Top",
+                                             symbol: pinned ? "pin.slash" : "pin", shortcut: "P",
+                                             detail: "A pinned file comes first in its folder, in every sort order.") {
+                    $0.model.toggleFilePin(file.url)
+                })
+            }
+            if let folder = controller?.model.currentFolder {
+                let name = FileManager.default.displayName(atPath: folder.path)
+                let pinned = workspace.isFolderPinned(folder)
+                commands.append(QuickCommand(title: pinned ? "Unpin “\(name)” from Favorites" : "Pin “\(name)” to Favorites",
+                                             symbol: pinned ? "pin.slash" : "pin", shortcut: "⇧P",
+                                             detail: "Favorites in the sidebar show the pinned folders. A folder that is not in the workspace is added too.") {
+                    $0.model.toggleFolderPin(folder)
+                })
+            }
         }
         if let folder = controller?.folderOutsideWorkspace {
             let name = FileManager.default.displayName(atPath: folder.path)

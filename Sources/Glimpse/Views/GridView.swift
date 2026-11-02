@@ -23,6 +23,7 @@ struct GridView: View {
                                 .onTapGesture(count: 2) { model.openViewer(at: offset) }
                                 .simultaneousGesture(TapGesture().onEnded { model.go(to: offset) })
                                 .onDrag { OutgoingDrag.itemProvider(for: item.url) }
+                                .contextMenu { FileContextMenu(model: model, url: item.url) }
                         }
                     }
                     .padding(.horizontal, padding)
@@ -45,8 +46,9 @@ struct GridView: View {
     }
 }
 
-/// The star, the tags and the new-file mark of a file.
+/// The pin, the star, the tags and the new-file mark of a file.
 struct FileMarks: Equatable {
+    var isPinned = false
     var isStarred = false
     var tags: [FinderTag] = []
     var isNew = false
@@ -54,9 +56,30 @@ struct FileMarks: Equatable {
     @MainActor
     init(_ url: URL) {
         let workspace = Workspace.shared
+        isPinned = workspace.isFilePinned(url)
         isStarred = workspace.isStarred(url)
         tags = workspace.tags(for: url)
         isNew = workspace.newFiles.contains(url)
+    }
+}
+
+/// The context menu of a file in the grid and the filmstrip.
+struct FileContextMenu: View {
+    let model: ViewerModel
+    let url: URL
+
+    var body: some View {
+        let workspace = Workspace.shared
+        let folder = url.deletingLastPathComponent()
+        let folderName = FileManager.default.displayName(atPath: folder.path)
+        Button(workspace.isFilePinned(url) ? "Unpin from Top" : "Pin to Top") { model.toggleFilePin(url) }
+        Button(workspace.isStarred(url) ? "Remove Star" : "Star") { model.toggleStar(url) }
+        Divider()
+        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+        Divider()
+        Button(workspace.isFolderPinned(folder) ? "Unpin “\(folderName)” from Favorites" : "Pin “\(folderName)” to Favorites") {
+            model.toggleFolderPin(folder)
+        }
     }
 }
 
@@ -104,6 +127,12 @@ private struct GridCell: View {
     @ViewBuilder
     private var leadingMarks: some View {
         HStack(spacing: 4) {
+            if marks.isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .rotationEffect(.degrees(45))
+            }
             if marks.isStarred {
                 Image(systemName: "star.fill")
                     .font(.system(size: 11, weight: .semibold))
