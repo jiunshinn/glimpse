@@ -7,6 +7,7 @@ struct ImageItem: Identifiable, Hashable, Sendable {
     let fileSize: Int64
     let modified: Date
     let created: Date
+    let isVideo: Bool
 
     var id: URL { url }
 }
@@ -51,7 +52,7 @@ enum OpenRequest: Equatable {
             if isDirectory.boolValue {
                 let isPackage = (try? url.resourceValues(forKeys: [.isPackageKey]))?.isPackage ?? false
                 if !isPackage { folders.append(url) }
-            } else if FolderScanner.isImage(url) {
+            } else if FolderScanner.canOpen(url) {
                 files.append(url)
             }
         }
@@ -70,7 +71,7 @@ enum FolderScanner {
         .contentTypeKey, .isRegularFileKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey,
     ]
 
-    /// Returns the sorted images of the source, or nil if the folder cannot be read.
+    /// Returns the sorted images and videos of the source, or nil if the folder cannot be read.
     static func scan(_ source: ImageSource, sortedBy key: SortKey, ascending: Bool) -> [ImageItem]? {
         let items: [ImageItem]
         switch source {
@@ -98,17 +99,18 @@ enum FolderScanner {
             name: url.lastPathComponent,
             fileSize: Int64(values.fileSize ?? 0),
             modified: values.contentModificationDate ?? .distantPast,
-            created: values.creationDate ?? .distantPast
+            created: values.creationDate ?? .distantPast,
+            isVideo: !type.conforms(to: .image)
         )
     }
 
-    static func isImage(_ url: URL) -> Bool {
+    static func canOpen(_ url: URL) -> Bool {
         guard let type = (try? url.resourceValues(forKeys: [.contentTypeKey]))?.contentType else { return false }
         return isSupported(type)
     }
 
     static func isSupported(_ type: UTType) -> Bool {
-        type.conforms(to: .image)
+        type.conforms(to: .image) || VideoDecoder.isPlayable(type)
     }
 
     static func sorted(_ items: [ImageItem], by key: SortKey, ascending: Bool) -> [ImageItem] {

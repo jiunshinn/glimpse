@@ -27,7 +27,8 @@ Glimpse fixes this. Double-click an image (or choose **Open With ▸ Glimpse**),
 - **Fast**: images decode in the background. The next and previous images load before you need them. A thumbnail shows at once while the full image loads.
 - **Zoom and pan**: pinch, ⌥-scroll or the mouse wheel zooms at the pointer. Double-click switches between "fit" and a close-up. Drag to pan. 100% means one image pixel on one screen pixel.
 - **Modern UI**: Liquid Glass on macOS 26 (translucent materials on macOS 14–15), a blurred ambient background from the current image, and full screen with controls that hide.
-- **Info panel**: dimensions, color profile, camera, lens, exposure, date taken and GPS location (press **I**).
+- **Videos**: MOV, MP4, M4V and other files that macOS can play show in the same folder sequence, with the system player controls. Seek, step by frame, change the speed and the volume from the keyboard, loop, and use picture in picture. A long video starts again where you stopped it. Thumbnails show the duration.
+- **Info panel**: dimensions, color profile, camera, lens, exposure, date taken and GPS location (press **I**). For videos: duration, frame rate, codec, HDR, bit rate and audio.
 - **Clean up a folder**: ⌘⌫ moves the image to the Trash and shows the next one. ⌘Z puts it back.
 - **Live folder**: new, removed and renamed files show up at once.
 - **Formats**: everything that macOS can read, including JPEG, PNG, HEIC/HEIF, AVIF, WebP, GIF (animated), TIFF, BMP, PSD, ICNS and camera RAW. EXIF orientation is applied.
@@ -84,6 +85,20 @@ Press **?** in the app to see this list.
 | ⌘C / ⌥⌘C | Copy image / copy file path |
 | ⇧⌘R | Show in Finder |
 
+While a video shows, ← → still go to the previous or next file. These keys control the video:
+
+| Key | Action |
+| --- | --- |
+| Space or K | Play / pause |
+| ⇧← / ⇧→ | Back / forward 5 seconds |
+| J / L | Back / forward 10 seconds |
+| , / . | Previous / next frame |
+| [ / ] / \ | Slower / faster / normal speed |
+| + / − | Volume up / down |
+| M | Mute |
+| ⌥⌘L | Loop |
+| ⇧⌘C | Copy the current frame |
+
 Single-key shortcuts use the key position, so they also work with a non-Latin input source (for example, Korean).
 
 ## How it works
@@ -91,13 +106,14 @@ Single-key shortcuts use the key position, so they also work with a non-Latin in
 ```
 Sources/Glimpse
 ├── App/        App delegate, menus, window controller (toolbar, keyboard)
-├── Model/      Folder scanning and sorting, folder watcher, ViewerModel (@Observable)
-├── Imaging/    ImageIO decoding, background pipeline with caches, metadata, pasteboard
+├── Model/      Folder scanning and sorting, folder watcher, ViewerModel (@Observable), video playback
+├── Imaging/    ImageIO and AVFoundation decoding, background pipeline with caches, metadata, pasteboard
 ├── Canvas/     Zoomable NSScrollView; the image is a layer, so the GPU scales it
 └── Views/      SwiftUI: filmstrip, grid, info panel, empty state, overlays
 ```
 
 - One window shows one folder. Opening one file scans its folder. Opening several files shows only those files.
+- Videos play with AVKit's `AVPlayerView`. One `AVPlayer` serves a window, so the volume and the speed stay the same from video to video. Video thumbnails come from `AVAssetImageGenerator` through the same thumbnail cache as images.
 - `ImagePipeline` decodes on `OperationQueue`s. Full images are cached (up to 1/8 of the memory). Thumbnails are cached separately, and a thumbnail request stops when its cell scrolls away.
 - The app is not sandboxed, because a sandboxed app cannot read the other files in the folder of the file that you opened. macOS can ask once for access to folders such as Desktop or Downloads.
 

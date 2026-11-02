@@ -29,13 +29,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     #if DEBUG
     /// Development aid: GLIMPSE_DEBUG="next,info" runs viewer commands after launch.
-    /// It lets scripts put the window in a known state for screenshots.
+    /// It lets scripts put the window in a known state for screenshots. "wait" delays the next commands by 1 s.
     private func applyDebugCommands() {
         guard let commands = ProcessInfo.processInfo.environment["GLIMPSE_DEBUG"] else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            MainActor.assumeIsolated {
-                guard let model = self?.controllers.first?.model else { return }
-                for command in commands.split(separator: ",") {
+        var delay = 1.0
+        for command in commands.split(separator: ",") {
+            if command == "wait" {
+                delay += 1
+                continue
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let model = self?.controllers.first?.model else { return }
                     switch command {
                     case "next": model.next()
                     case "info": model.showInfo = true
@@ -43,6 +48,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     case "shortcuts": model.showShortcuts = true
                     case "zoom": model.toggleZoom()
                     case "rotate": model.rotate(by: 1)
+                    case "play": model.togglePlayback()
+                    case "forward": model.seekVideo(by: 10)
+                    case "faster": model.changeVideoSpeed(by: 1)
+                    case "volume": model.changeVolume(by: -0.1)
+                    case "loop": model.toggleLoop()
                     default: break
                     }
                 }
@@ -53,6 +63,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         open(urls)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Closing the videos records where long videos stopped.
+        controllers.forEach { $0.model.stopVideo() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -109,11 +124,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func openDocument(_ sender: Any?) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image, .folder]
+        panel.allowedContentTypes = [.image, .folder] + VideoDecoder.playableTypes
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = true
-        panel.message = "Choose an image or a folder of images."
+        panel.message = "Choose an image, a video or a folder."
         panel.prompt = "Open"
         panel.begin { [weak self] response in
             guard response == .OK else { return }

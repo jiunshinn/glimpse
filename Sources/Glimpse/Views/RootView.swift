@@ -16,6 +16,10 @@ struct RootView: View {
                 .opacity(model.isGridMode ? 0 : 1)
                 .allowsHitTesting(!model.isGridMode)
 
+            if model.showsVideo && !model.loadFailed {
+                VideoStage(model: model)
+            }
+
             if model.isGridMode && model.hasItems {
                 GridView(model: model)
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))

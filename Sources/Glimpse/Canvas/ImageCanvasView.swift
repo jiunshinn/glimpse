@@ -198,6 +198,8 @@ final class ImageCanvasView: NSScrollView {
 
     /// Switches between "fit" and a close-up view.
     func toggleZoom(around point: NSPoint? = nil) {
+        // Nothing to zoom, for example around a video or while the first image loads.
+        guard identity != nil else { return }
         let fit = fitMagnification
         if isFitMode || magnification <= fit * 1.01 {
             var target = 1 / backingScale

@@ -52,7 +52,7 @@ private struct GridCell: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            ThumbnailImage(url: item.url, contentMode: .fit, cornerRadius: 8)
+            ThumbnailImage(url: item.url, contentMode: .fit, cornerRadius: 8, videoBadge: .duration)
                 .padding(8)
                 .frame(width: size, height: size)
                 .background {

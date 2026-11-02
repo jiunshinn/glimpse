@@ -146,6 +146,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         let shift = flags.contains(.shift)
 
         switch Int(event.keyCode) {
+        case kVK_LeftArrow where shift && model.showsVideo: model.seekVideo(by: -5)
+        case kVK_RightArrow where shift && model.showsVideo: model.seekVideo(by: 5)
         case kVK_LeftArrow: model.moveSelection(by: -1, vertical: false)
         case kVK_RightArrow: model.moveSelection(by: 1, vertical: false)
         case kVK_UpArrow: model.moveSelection(by: -1, vertical: true)
@@ -157,6 +159,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         case kVK_Space:
             if model.isGridMode {
                 model.openViewer(at: model.index)
+            } else if model.showsVideo && !shift {
+                model.togglePlayback()
             } else {
                 shift ? model.previous() : model.next()
             }
@@ -165,8 +169,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             model.openViewer(at: model.index)
         case kVK_Escape:
             return handleEscape()
-        case kVK_ANSI_KeypadPlus: model.zoomIn()
-        case kVK_ANSI_KeypadMinus: model.zoomOut()
+        case kVK_ANSI_KeypadPlus: model.showsVideo ? model.changeVolume(by: 0.1) : model.zoomIn()
+        case kVK_ANSI_KeypadMinus: model.showsVideo ? model.changeVolume(by: -0.1) : model.zoomOut()
         default:
             return handleCharacterKey(event, shift: shift)
         }
@@ -174,7 +178,9 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     private func handleCharacterKey(_ event: NSEvent, shift: Bool) -> Bool {
-        switch KeyboardLayout.character(for: event) {
+        let character = KeyboardLayout.character(for: event)
+        if model.showsVideo, handleVideoKey(character) { return true }
+        switch character {
         case "g": model.toggleGrid()
         case "i": model.showInfo.toggle()
         case "t": model.showThumbnails.toggle()
@@ -189,12 +195,31 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         return true
     }
 
+    /// Keys of common video players. They work while a video shows.
+    private func handleVideoKey(_ character: Character?) -> Bool {
+        switch character {
+        case "k": model.togglePlayback()
+        case "j": model.seekVideo(by: -10)
+        case "l": model.seekVideo(by: 10)
+        case ",", "<": model.stepVideoFrame(by: -1)
+        case ".", ">": model.stepVideoFrame(by: 1)
+        case "[", "{": model.changeVideoSpeed(by: -1)
+        case "]", "}": model.changeVideoSpeed(by: 1)
+        case "\\", "|": model.resetVideoSpeed()
+        case "=", "+": model.changeVolume(by: 0.1)
+        case "-", "_": model.changeVolume(by: -0.1)
+        case "m": model.toggleMute()
+        default: return false
+        }
+        return true
+    }
+
     private func handleEscape() -> Bool {
         if model.showShortcuts {
             model.showShortcuts = false
         } else if let window, window.styleMask.contains(.fullScreen) {
             window.toggleFullScreen(nil)
-        } else if model.isGridMode, model.current != nil, model.canvasContent != nil {
+        } else if model.isGridMode, model.current != nil, model.hasViewerContent {
             model.setGridMode(false)
         } else if model.showInfo {
             model.showInfo = false
@@ -221,6 +246,20 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     @objc func toggleThumbnails(_ sender: Any?) { model.showThumbnails.toggle() }
     @objc func toggleAmbientBackground(_ sender: Any?) { model.ambientBackground.toggle() }
     @objc func showShortcuts(_ sender: Any?) { model.showShortcuts.toggle() }
+    @objc func togglePlayback(_ sender: Any?) { model.togglePlayback() }
+    @objc func toggleLoop(_ sender: Any?) { model.toggleLoop() }
+    /// The tag of the menu item is the number of seconds.
+    @objc func jumpBack(_ sender: NSMenuItem) { model.seekVideo(by: -Double(sender.tag)) }
+    @objc func jumpForward(_ sender: NSMenuItem) { model.seekVideo(by: Double(sender.tag)) }
+    @objc func previousFrame(_ sender: Any?) { model.stepVideoFrame(by: -1) }
+    @objc func nextFrame(_ sender: Any?) { model.stepVideoFrame(by: 1) }
+    @objc func slower(_ sender: Any?) { model.changeVideoSpeed(by: -1) }
+    @objc func faster(_ sender: Any?) { model.changeVideoSpeed(by: 1) }
+    @objc func normalSpeed(_ sender: Any?) { model.resetVideoSpeed() }
+    @objc func volumeUp(_ sender: Any?) { model.changeVolume(by: 0.1) }
+    @objc func volumeDown(_ sender: Any?) { model.changeVolume(by: -0.1) }
+    @objc func toggleMute(_ sender: Any?) { model.toggleMute() }
+    @objc func copyFrame(_ sender: Any?) { model.copyCurrentFrame() }
     @objc func revealInFinder(_ sender: Any?) { model.revealCurrentInFinder() }
     @objc func copy(_ sender: Any?) { model.copyCurrent() }
     @objc func copyPath(_ sender: Any?) { model.copyCurrentPath() }
@@ -240,15 +279,29 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         let hasImage = model.current != nil
         let inViewer = hasImage && !model.isGridMode
+        let showsImage = inViewer && !model.showsVideo
         switch item.action {
         case #selector(nextImage(_:)), #selector(lastImage(_:)):
             return model.index < model.items.count - 1
         case #selector(previousImage(_:)), #selector(firstImage(_:)):
             return model.index > 0 && model.hasItems
         case #selector(zoomIn(_:)), #selector(zoomOut(_:)):
-            return hasImage
+            return hasImage && !model.showsVideo
         case #selector(zoomToActualSize(_:)), #selector(zoomToFit(_:)), #selector(rotateLeft(_:)), #selector(rotateRight(_:)):
-            return inViewer
+            return showsImage
+        case #selector(togglePlayback(_:)), #selector(jumpBack(_:)), #selector(jumpForward(_:)),
+             #selector(previousFrame(_:)), #selector(nextFrame(_:)), #selector(slower(_:)), #selector(faster(_:)),
+             #selector(volumeUp(_:)), #selector(volumeDown(_:)), #selector(copyFrame(_:)):
+            return model.showsVideo
+        case #selector(normalSpeed(_:)):
+            item.state = model.video.player.defaultRate == 1 ? .on : .off
+            return model.showsVideo
+        case #selector(toggleMute(_:)):
+            item.state = model.video.player.isMuted ? .on : .off
+            return model.showsVideo
+        case #selector(toggleLoop(_:)):
+            item.state = model.video.isLooping ? .on : .off
+            return true
         case #selector(toggleGrid(_:)):
             item.state = model.isGridMode ? .on : .off
             return model.hasItems
@@ -276,7 +329,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         switch item.itemIdentifier {
-        case .rotate: model.current != nil && !model.isGridMode
+        case .rotate: model.current != nil && !model.isGridMode && !model.showsVideo
         case .trash: model.current != nil
         case .grid: model.hasItems
         default: true
@@ -353,6 +406,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         }
         monitors.forEach(NSEvent.removeMonitor)
         monitors = []
+        model.stopVideo()
         onClose?(self)
     }
 
@@ -389,6 +443,9 @@ enum KeyboardLayout {
     private static let ansiKeys: [Int: Character] = [
         kVK_ANSI_G: "g", kVK_ANSI_I: "i", kVK_ANSI_T: "t", kVK_ANSI_F: "f", kVK_ANSI_Z: "z", kVK_ANSI_R: "r",
         kVK_ANSI_Equal: "=", kVK_ANSI_Minus: "-", kVK_ANSI_Slash: "/",
+        kVK_ANSI_J: "j", kVK_ANSI_K: "k", kVK_ANSI_L: "l", kVK_ANSI_M: "m",
+        kVK_ANSI_Comma: ",", kVK_ANSI_Period: ".", kVK_ANSI_LeftBracket: "[", kVK_ANSI_RightBracket: "]",
+        kVK_ANSI_Backslash: "\\",
     ]
 
     static func character(for event: NSEvent) -> Character? {

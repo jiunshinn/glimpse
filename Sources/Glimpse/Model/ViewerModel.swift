@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Observation
 
 enum Layout {
@@ -36,6 +37,8 @@ final class ViewerModel {
     // MARK: Displayed image
 
     private(set) var canvasContent: CanvasContent?
+    /// The display size of the current video. The video view stays hidden until it is known.
+    private(set) var videoSize: CGSize?
     private(set) var ambientImage: CGImage?
     private(set) var ambientKey: URL?
     private(set) var loadFailed = false
@@ -78,6 +81,7 @@ final class ViewerModel {
 
     // MARK: Private state
 
+    let video = VideoController()
     @ObservationIgnored weak var canvas: ImageCanvasView?
     @ObservationIgnored private let pipeline = ImagePipeline.shared
     @ObservationIgnored private var watcher: FolderWatcher?
@@ -92,6 +96,10 @@ final class ViewerModel {
     /// The unrotated image that the canvas shows (a thumbnail or the full image).
     @ObservationIgnored private var base: (url: URL, image: CGImage, animated: NSImage?, pixelSize: CGSize)?
 
+    init() {
+        video.onFailure = { [weak self] in self?.loadFailed = true }
+    }
+
     // MARK: - Derived state
 
     var current: ImageItem? {
@@ -99,6 +107,12 @@ final class ViewerModel {
     }
 
     var hasItems: Bool { !items.isEmpty }
+
+    /// True when the viewer plays a video instead of showing an image on the canvas.
+    var showsVideo: Bool { !isGridMode && current?.isVideo == true }
+
+    /// True when the canvas or the player has something for the current item (it can still be loading).
+    var hasViewerContent: Bool { canvasContent != nil || video.url != nil }
 
     /// True for a new window that shows nothing yet.
     var isBlank: Bool { source == nil }
@@ -119,10 +133,17 @@ final class ViewerModel {
         return NSEdgeInsets(top: topInset, left: 0, bottom: bottom, right: right)
     }
 
+    /// The player controls sit at the bottom of the video. Keep them clear of the filmstrip in full screen too.
+    var videoInsets: NSEdgeInsets {
+        var insets = canvasInsets
+        if isFullScreen && showThumbnails && items.count > 1 { insets.bottom = Layout.filmstripReserved }
+        return insets
+    }
+
     var collectionName: String {
         switch source {
         case .folder(let url): url.lastPathComponent
-        case .files: "Selected Images"
+        case .files: "Selected Files"
         case nil: "Glimpse"
         }
     }
@@ -134,8 +155,14 @@ final class ViewerModel {
 
     var windowSubtitle: String {
         guard hasItems else { return isScanning ? "Loading…" : "" }
-        if isGridMode { return items.count == 1 ? "1 image" : "\(items.count) images" }
+        if isGridMode { return itemCountDescription }
         return "\(index + 1) of \(items.count)"
+    }
+
+    private var itemCountDescription: String {
+        let videos = items.lazy.filter(\.isVideo).count
+        let noun = videos == 0 ? "image" : videos == items.count ? "video" : "item"
+        return items.count == 1 ? "1 \(noun)" : "\(items.count) \(noun)s"
     }
 
     // MARK: - Opening
@@ -227,7 +254,7 @@ final class ViewerModel {
             clearCanvas()
             return
         }
-        if current != previous || canvasContent == nil {
+        if current != previous || !hasViewerContent {
             rotation = 0
             if !isGridMode { loadCurrent() }
             if showInfo { loadInfo() }
@@ -250,12 +277,13 @@ final class ViewerModel {
         ambientKey = nil
         loadFailed = false
         info = nil
+        stopVideo()
     }
 
     // MARK: - Navigation
 
     func go(to newIndex: Int) {
-        guard items.indices.contains(newIndex), newIndex != index || canvasContent == nil else { return }
+        guard items.indices.contains(newIndex), newIndex != index || !hasViewerContent else { return }
         direction = newIndex >= index ? 1 : -1
         index = newIndex
         rotation = 0
@@ -310,10 +338,15 @@ final class ViewerModel {
         guard hasItems || !enabled else { return }
         isGridMode = enabled
         hoverEdge = nil
-        if !enabled, canvasContent.map({ !$0.url.isSameFile(as: current?.url ?? $0.url) }) ?? true {
+        if enabled {
+            video.pause()
+        } else if let url = current?.url, !(displayedURL.map { $0.isSameFile(as: url) } ?? false) {
             loadCurrent()
         }
     }
+
+    /// The video stays in the player (paused) while the grid shows.
+    private var displayedURL: URL? { video.url ?? canvasContent?.url }
 
     func openViewer(at newIndex: Int) {
         guard items.indices.contains(newIndex) else { return }
@@ -332,9 +365,17 @@ final class ViewerModel {
             clearCanvas()
             return
         }
-        let url = item.url
         loadFailed = false
+        if item.isVideo {
+            loadVideo(item.url)
+        } else {
+            if video.url != nil { stopVideo() }
+            loadImage(item.url)
+        }
+        prefetchNeighbors()
+    }
 
+    private func loadImage(_ url: URL) {
         if let full = pipeline.cachedImage(for: url) {
             show(full.cgImage, animated: full.animated, pixelSize: full.pixelSize, for: url)
         } else if let thumbnail = pipeline.cachedThumbnail(for: url) {
@@ -364,13 +405,41 @@ final class ViewerModel {
                 self.canvasContent = nil
             }
         }
-        prefetchNeighbors()
+    }
+
+    private func loadVideo(_ url: URL) {
+        // The canvas stays empty under a video.
+        base = nil
+        canvasContent = nil
+        if let resumed = video.load(url) {
+            showToast("Resumed at \(ImageMetadata.formatDuration(resumed))", symbol: "clock.arrow.circlepath")
+        }
+
+        let cached = pipeline.cachedThumbnail(for: url)
+        videoSize = cached?.fullPixelSize
+        if let cached { setAmbient(cached.image, for: url) }
+        loadTask = Task { [weak self, pipeline] in
+            async let thumbnail = pipeline.thumbnail(for: url)
+            let size = await VideoDecoder.displaySize(of: AVURLAsset(url: url))
+            guard let self, !Task.isCancelled, self.video.url == url else { return }
+            // A file with only sound still gets an area for the player controls.
+            if self.videoSize == nil { self.videoSize = size ?? CGSize(width: 16, height: 9) }
+            guard let thumbnail = await thumbnail, !Task.isCancelled, self.video.url == url else { return }
+            self.setAmbient(thumbnail.image, for: url)
+        }
+    }
+
+    /// Stops the playback and closes the video file.
+    func stopVideo() {
+        video.close()
+        videoSize = nil
     }
 
     private func prefetchNeighbors() {
         guard let current else { return }
+        // Videos stream from the file, so only images are decoded ahead.
         let neighbors = [index + direction, index + 2 * direction, index - direction]
-            .filter { items.indices.contains($0) }
+            .filter { items.indices.contains($0) && !items[$0].isVideo }
             .map { items[$0].url }
         pipeline.cancelFullRequests(except: Set(neighbors + [current.url]))
         neighbors.forEach(pipeline.prefetch)
@@ -417,7 +486,7 @@ final class ViewerModel {
         }
         if info.map({ !$0.url.isSameFile(as: url) }) ?? false { info = nil }
         infoTask = Task { [weak self] in
-            let loaded = await Task.detached(priority: .utility) { ImageMetadata.load(url) }.value
+            let loaded = await Task.detached(priority: .utility) { await ImageMetadata.load(url) }.value
             guard let self, !Task.isCancelled, self.current?.url == url else { return }
             self.info = loaded
         }
@@ -434,7 +503,7 @@ final class ViewerModel {
     func zoomIn() {
         if isGridMode {
             gridTileSize = min(gridTileSize + 40, 420)
-        } else {
+        } else if !showsVideo {
             canvas?.zoomIn()
         }
     }
@@ -442,29 +511,103 @@ final class ViewerModel {
     func zoomOut() {
         if isGridMode {
             gridTileSize = max(gridTileSize - 40, 90)
-        } else {
+        } else if !showsVideo {
             canvas?.zoomOut()
         }
     }
 
     func zoomToFit() {
-        guard !isGridMode else { return }
+        guard !isGridMode, !showsVideo else { return }
         canvas?.zoomToFit(animated: true, userInitiated: true)
     }
 
     func zoomToActualSize() {
-        guard !isGridMode else { return }
+        guard !isGridMode, !showsVideo else { return }
         canvas?.zoomToActualSize()
     }
 
     func toggleZoom() {
-        guard !isGridMode else { return }
+        guard !isGridMode, !showsVideo else { return }
         canvas?.toggleZoom()
     }
 
+    // MARK: - Video
+
+    func togglePlayback() {
+        guard showsVideo else { return }
+        let isPlaying = video.togglePlayback()
+        showToast(isPlaying ? "Play" : "Pause", symbol: isPlaying ? "play.fill" : "pause.fill")
+    }
+
+    /// Positive values move forward. 5 and 10 seconds have their own symbols.
+    func seekVideo(by seconds: Double) {
+        guard showsVideo, let time = video.seek(by: seconds), let duration = video.duration else { return }
+        let symbol = seconds < 0 ? "gobackward.\(Int(-seconds))" : "goforward.\(Int(seconds))"
+        showToast("\(ImageMetadata.formatDuration(time)) / \(ImageMetadata.formatDuration(duration))", symbol: symbol)
+    }
+
+    func stepVideoFrame(by frames: Int) {
+        guard showsVideo else { return }
+        video.step(by: frames)
+    }
+
+    func changeVideoSpeed(by steps: Int) {
+        guard showsVideo else { return }
+        showSpeedToast(video.changeSpeed(by: steps))
+    }
+
+    func resetVideoSpeed() {
+        guard showsVideo else { return }
+        video.setSpeed(1)
+        showSpeedToast(1)
+    }
+
+    private func showSpeedToast(_ speed: Float) {
+        showToast("Speed \(String(format: "%g", speed))×", symbol: "gauge.with.needle")
+    }
+
+    func changeVolume(by delta: Float) {
+        guard showsVideo else { return }
+        let volume = video.changeVolume(by: delta)
+        let symbol = volume == 0 ? "speaker.fill" : volume < 0.34 ? "speaker.wave.1.fill"
+            : volume < 0.67 ? "speaker.wave.2.fill" : "speaker.wave.3.fill"
+        showToast("Volume \(Int((volume * 100).rounded()))%", symbol: symbol)
+    }
+
+    func toggleMute() {
+        guard showsVideo else { return }
+        video.player.isMuted.toggle()
+        showToast(video.player.isMuted ? "Mute" : "Sound On",
+                  symbol: video.player.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+    }
+
+    func toggleLoop() {
+        video.isLooping.toggle()
+        showToast(video.isLooping ? "Loop On" : "Loop Off", symbol: "repeat")
+    }
+
+    func copyCurrentFrame() {
+        guard showsVideo else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            if let frame = await self.video.currentFrame() {
+                PasteboardWriter.copyImage(frame)
+                self.showToast("Frame copied", symbol: "photo.on.rectangle")
+            } else {
+                self.showToast("Couldn’t copy the frame", symbol: "exclamationmark.triangle")
+            }
+        }
+    }
+
+    // MARK: - Files
+
     func copyCurrent() {
-        guard let url = current?.url else { return }
-        PasteboardWriter.copyImage(at: url)
+        guard let item = current else { return }
+        if item.isVideo {
+            PasteboardWriter.copyFile(at: item.url)
+        } else {
+            PasteboardWriter.copyImage(at: item.url)
+        }
         showToast("Copied", symbol: "doc.on.doc")
     }
 

@@ -19,6 +19,24 @@ enum PasteboardWriter {
         pasteboard.writeObjects([item])
     }
 
+    /// Puts a decoded image (for example a video frame) on the pasteboard as PNG and TIFF data.
+    static func copyImage(_ image: CGImage) {
+        let rep = NSBitmapImageRep(cgImage: image)
+        let item = NSPasteboardItem()
+        if let png = rep.representation(using: .png, properties: [:]) { item.setData(png, forType: .png) }
+        if let tiff = rep.tiffRepresentation { item.setData(tiff, forType: .tiff) }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.writeObjects([item])
+    }
+
+    /// Puts only the file URL on the pasteboard, for example for a video.
+    static func copyFile(at url: URL) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.writeObjects([url as NSURL])
+    }
+
     static func copyPath(of url: URL) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()

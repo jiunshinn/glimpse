@@ -103,6 +103,15 @@ struct ShortcutsOverlay: View {
             ("⌘C", "Copy image"),
             ("⇧⌘R", "Show in Finder"),
         ]),
+        ("Video", [
+            ("Space  K", "Play / pause"),
+            ("⇧← ⇧→", "Back / forward 5 s"),
+            ("J  L", "Back / forward 10 s"),
+            (",  .", "Previous / next frame"),
+            ("[  ]  \\", "Slower / faster / normal speed"),
+            ("+ −", "Volume up / down"),
+            ("M", "Mute"),
+        ]),
     ]
 
     var body: some View {
@@ -124,8 +133,11 @@ struct ShortcutsOverlay: View {
                         group(1)
                     }
                     GridRow {
-                        group(2)
-                        group(3)
+                        group(4)
+                        VStack(alignment: .leading, spacing: 20) {
+                            group(2)
+                            group(3)
+                        }
                     }
                 }
             }

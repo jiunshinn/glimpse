@@ -8,6 +8,7 @@ enum MainMenu {
         main.addItem(container(fileMenu()))
         main.addItem(container(editMenu()))
         main.addItem(container(viewMenu()))
+        main.addItem(container(playbackMenu()))
         main.addItem(container(goMenu()))
         let window = windowMenu()
         main.addItem(container(window))
@@ -70,6 +71,7 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Copy", #selector(ViewerWindowController.copy(_:)), "c"))
         menu.addItem(item("Copy File Path", #selector(ViewerWindowController.copyPath(_:)), "c", [.command, .option]))
+        menu.addItem(item("Copy Frame", #selector(ViewerWindowController.copyFrame(_:)), "c", [.command, .shift]))
         return menu
     }
 
@@ -93,6 +95,30 @@ enum MainMenu {
         menu.addItem(sort)
         menu.addItem(.separator())
         menu.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
+        return menu
+    }
+
+    /// Single keys without ⌘ work only while a video shows. With an image, the same keys do other things.
+    private static func playbackMenu() -> NSMenu {
+        typealias Controller = ViewerWindowController
+        let menu = NSMenu(title: "Playback")
+        menu.addItem(item("Play/Pause", #selector(Controller.togglePlayback(_:)), " ", []))
+        menu.addItem(item("Loop", #selector(Controller.toggleLoop(_:)), "l", [.command, .option]))
+        menu.addItem(.separator())
+        menu.addItem(item("Jump Back 5 Seconds", #selector(Controller.jumpBack(_:)), key(NSLeftArrowFunctionKey), [.shift], tag: 5))
+        menu.addItem(item("Jump Forward 5 Seconds", #selector(Controller.jumpForward(_:)), key(NSRightArrowFunctionKey), [.shift], tag: 5))
+        menu.addItem(item("Jump Back 10 Seconds", #selector(Controller.jumpBack(_:)), "j", [], tag: 10))
+        menu.addItem(item("Jump Forward 10 Seconds", #selector(Controller.jumpForward(_:)), "l", [], tag: 10))
+        menu.addItem(item("Previous Frame", #selector(Controller.previousFrame(_:)), ",", []))
+        menu.addItem(item("Next Frame", #selector(Controller.nextFrame(_:)), ".", []))
+        menu.addItem(.separator())
+        menu.addItem(item("Slower", #selector(Controller.slower(_:)), "[", []))
+        menu.addItem(item("Faster", #selector(Controller.faster(_:)), "]", []))
+        menu.addItem(item("Normal Speed", #selector(Controller.normalSpeed(_:)), "\\", []))
+        menu.addItem(.separator())
+        menu.addItem(item("Volume Up", #selector(Controller.volumeUp(_:)), "=", []))
+        menu.addItem(item("Volume Down", #selector(Controller.volumeDown(_:)), "-", []))
+        menu.addItem(item("Mute", #selector(Controller.toggleMute(_:)), "m", []))
         return menu
     }
 

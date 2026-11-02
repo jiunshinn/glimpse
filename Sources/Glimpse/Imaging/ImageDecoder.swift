@@ -21,10 +21,13 @@ final class DecodedImage: @unchecked Sendable {
 final class Thumbnail: @unchecked Sendable {
     let image: CGImage
     let fullPixelSize: CGSize
+    /// The length of a video in seconds. Nil for an image.
+    let duration: Double?
 
-    init(image: CGImage, fullPixelSize: CGSize) {
+    init(image: CGImage, fullPixelSize: CGSize, duration: Double? = nil) {
         self.image = image
         self.fullPixelSize = fullPixelSize
+        self.duration = duration
     }
 
     var cost: Int { image.bytesPerRow * image.height }
@@ -55,6 +58,7 @@ enum ImageDecoder {
 
     static func decodeThumbnail(_ url: URL, maxPixelSize: Int = thumbnailPixelSize) -> Thumbnail? {
         guard let source = makeSource(url) else {
+            if VideoDecoder.isVideo(url) { return VideoDecoder.thumbnail(url, maxPixelSize: maxPixelSize) }
             guard let decoded = decodeWithAppKit(url) else { return nil }
             return Thumbnail(image: decoded.cgImage, fullPixelSize: decoded.pixelSize)
         }
