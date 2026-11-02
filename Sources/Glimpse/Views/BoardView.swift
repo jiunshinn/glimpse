@@ -50,6 +50,7 @@ struct BoardView: View {
                 }
             }
             .frame(width: width, height: height, alignment: .topLeading)
+            .coordinateSpace(.named(Self.canvasSpace))
             .dropDestination(for: URL.self) { urls, location in
                 let files = urls.filter(FolderScanner.canOpen)
                 guard !files.isEmpty else { return false }
@@ -172,6 +173,9 @@ struct BoardView: View {
 
     // MARK: - Gestures
 
+    /// The drags measure in the canvas, not in the item. The item moves during the drag, so its own space would shake.
+    private static let canvasSpace = "board-canvas"
+
     private func resize(_ item: BoardItem, by factor: Double) {
         withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) {
             workspace.updateItem(item.id, in: boardID) { $0.width = BoardItemAccessibility.clampedWidth($0.width * factor) }
@@ -184,7 +188,7 @@ struct BoardView: View {
     }
 
     private func moveGesture(_ item: BoardItem) -> some Gesture {
-        DragGesture(minimumDistance: 2)
+        DragGesture(minimumDistance: 2, coordinateSpace: .named(Self.canvasSpace))
             .onChanged { value in
                 if drag == nil { select(item) }
                 drag = (item.id, value.translation)
@@ -199,7 +203,7 @@ struct BoardView: View {
     }
 
     private func resizeGesture(_ item: BoardItem) -> some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.canvasSpace))
             .onChanged { value in
                 resize = (item.id, BoardItemAccessibility.clampedWidth(item.width + value.translation.width))
             }
