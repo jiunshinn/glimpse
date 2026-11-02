@@ -5,20 +5,20 @@
 <h1 align="center">Glimpse</h1>
 
 <p align="center">
-  A fast, modern image viewer for macOS.<br>
-  Open one image, then browse the whole folder with the arrow keys.
+  A fast, modern viewer for images, videos and documents on macOS.<br>
+  Open one file, then browse the whole folder with the arrow keys.
 </p>
 
 ---
 
 ## Why
 
-Finder's Quick Look and Preview make it hard to look through a folder of images:
+Finder's Quick Look and Preview make it hard to look through a folder of photos, videos and documents:
 
-- You open one image and cannot go to the next one with the arrow keys.
-- You must select all the images first, and then open them together.
+- You open one file and cannot go to the next one with the arrow keys.
+- You must select all the files first, and then open them together.
 
-Glimpse fixes this. Double-click an image (or choose **Open With ▸ Glimpse**), and every image in that folder is ready. Press **→** for the next one.
+Glimpse fixes this. Double-click a file (or choose **Open With ▸ Glimpse**), and every image, video and document in that folder is ready. Press **→** for the next one.
 
 ## Features
 
@@ -30,9 +30,12 @@ Glimpse fixes this. Double-click an image (or choose **Open With ▸ Glimpse**),
 - **Videos**: MOV, MP4, M4V and other files that macOS can play show in the same folder sequence, with the system player controls. Seek, step by frame, change the speed and the volume from the keyboard, loop, and use picture in picture. A long video starts again where you stopped it. Thumbnails show the duration.
 - **Documents**: PDF, Word (DOCX, DOC), Excel (XLSX, XLS, CSV), PowerPoint (PPTX, PPT), Pages, Numbers, Keynote, RTF and OpenDocument files show in the same folder sequence. PDFs open with PDFKit: the whole page fits, and you can scroll, zoom, rotate, select text and unlock a protected file. Other documents show with Quick Look, so you do not need Office or iWork. Spreadsheets keep their sheet tabs.
 - **Info panel**: dimensions, color profile, camera, lens, exposure, date taken and GPS location (press **I**). For videos: duration, frame rate, codec, HDR, bit rate and audio. For documents: pages, page size, title, author and the app that made the file.
-- **Clean up a folder**: ⌘⌫ moves the image to the Trash and shows the next one. ⌘Z puts it back.
+- **Clean up a folder**: ⌘⌫ moves the file to the Trash and shows the next one. ⌘Z puts it back.
 - **Live folder**: new, removed and renamed files show up at once.
-- **Formats**: everything that macOS can read, including JPEG, PNG, HEIC/HEIF, AVIF, WebP, GIF (animated), TIFF, BMP, PSD, ICNS and camera RAW. EXIF orientation is applied.
+- **Formats**:
+  - Images: everything that macOS can read, including JPEG, PNG, HEIC/HEIF, AVIF, WebP, GIF (animated), TIFF, BMP, PSD, ICNS and camera RAW. EXIF orientation is applied.
+  - Videos: everything that macOS can play, including MOV, MP4, M4V, 3GP, AVI and MPEG.
+  - Documents: PDF, DOCX, DOC, XLSX, XLS, CSV, PPTX, PPT, Pages, Numbers, Keynote, RTF and OpenDocument.
 - **Native and small**: Swift, AppKit and SwiftUI. No Electron, no dependencies.
 
 ## Requirements
@@ -53,7 +56,7 @@ Other commands:
 | Command | What it does |
 | --- | --- |
 | `make app` | Builds `build/Glimpse.app` (universal: Apple silicon and Intel) |
-| `make run OPEN=~/Pictures` | Builds a debug app and opens a folder or an image |
+| `make run OPEN=~/Pictures` | Builds a debug app and opens a folder or a file |
 | `make icon` | Draws the app icon again (`Resources/AppIcon.icns`) |
 | `make clean` | Removes build files |
 
@@ -63,17 +66,19 @@ The app is signed ad hoc. If macOS blocks a copy that you downloaded, right-clic
 
 Choose **Glimpse ▸ Make Default Image Viewer…**. Or, in Finder: select an image, press ⌘I, choose Glimpse under **Open with**, and click **Change All…**.
 
+The menu command changes only the common image types. To open a video or a document type in Glimpse, do the Finder steps with a file of that type.
+
 ## Keyboard shortcuts
 
 Press **?** in the app to see this list.
 
 | Key | Action |
 | --- | --- |
-| ← → / Space | Previous / next image (⇧Space: previous) |
-| ↑ ↓ | Previous / next image; in the grid, move by a row |
-| Home / End | First / last image |
+| ← → / Space | Previous / next file (⇧Space: previous) |
+| ↑ ↓ | Previous / next file; in the grid, move by a row |
+| Home / End | First / last file |
 | G | Grid of the whole folder |
-| Return | Open the selected image (grid) |
+| Return | Open the selected file (grid) |
 | + / − | Zoom in / out (in the grid: larger / smaller tiles) |
 | Z or double-click | Fit ↔ close-up |
 | ⌘0 / ⌘9 | Actual size / zoom to fit |
@@ -83,7 +88,7 @@ Press **?** in the app to see this list.
 | T | Thumbnail filmstrip |
 | Esc | Close a panel, leave the grid, or exit full screen |
 | ⌘⌫ | Move to Trash (⌘Z: undo) |
-| ⌘C / ⌥⌘C | Copy image / copy file path |
+| ⌘C / ⌥⌘C | Copy the image (a video or a document: the file) / copy the file path |
 | ⇧⌘R | Show in Finder |
 
 While a video shows, ← → still go to the previous or next file. These keys control the video:
