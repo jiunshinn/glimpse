@@ -59,6 +59,7 @@ enum ImageDecoder {
     static func decodeThumbnail(_ url: URL, maxPixelSize: Int = thumbnailPixelSize) -> Thumbnail? {
         guard let source = makeSource(url) else {
             if VideoDecoder.isVideo(url) { return VideoDecoder.thumbnail(url, maxPixelSize: maxPixelSize) }
+            if DocumentDecoder.isDocument(url) { return DocumentDecoder.thumbnail(url, maxPixelSize: maxPixelSize) }
             guard let decoded = decodeWithAppKit(url) else { return nil }
             return Thumbnail(image: decoded.cgImage, fullPixelSize: decoded.pixelSize)
         }

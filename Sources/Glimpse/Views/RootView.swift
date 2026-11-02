@@ -20,6 +20,13 @@ struct RootView: View {
                 VideoStage(model: model)
             }
 
+            // The document stays open under the grid, so it keeps its page.
+            if model.document != nil && !model.loadFailed {
+                DocumentStage(model: model)
+                    .opacity(model.isGridMode ? 0 : 1)
+                    .allowsHitTesting(!model.isGridMode)
+            }
+
             if model.isGridMode && model.hasItems {
                 GridView(model: model)
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))

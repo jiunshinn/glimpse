@@ -45,6 +45,13 @@ final class ViewerModel {
     private(set) var info: ImageInfo?
     private(set) var rotation = 0
 
+    // MARK: Displayed document
+
+    /// The document that the viewer shows. Nil for an image or a video.
+    private(set) var document: DocumentContent?
+    /// The visible page of a PDF.
+    private(set) var documentPage: DocumentPage?
+
     // MARK: Presentation
 
     private(set) var isGridMode = false
@@ -83,6 +90,8 @@ final class ViewerModel {
 
     let video = VideoController()
     @ObservationIgnored weak var canvas: ImageCanvasView?
+    /// The PDF or Quick Look view of the current document.
+    @ObservationIgnored weak var documentView: NSView?
     @ObservationIgnored private let pipeline = ImagePipeline.shared
     @ObservationIgnored private var watcher: FolderWatcher?
     @ObservationIgnored private var scanTask: Task<Void, Never>?
@@ -111,8 +120,17 @@ final class ViewerModel {
     /// True when the viewer plays a video instead of showing an image on the canvas.
     var showsVideo: Bool { !isGridMode && current?.isVideo == true }
 
-    /// True when the canvas or the player has something for the current item (it can still be loading).
-    var hasViewerContent: Bool { canvasContent != nil || video.url != nil }
+    /// True when the viewer shows a document (PDF, Word, Excel and others) instead of an image.
+    var showsDocument: Bool { !isGridMode && current?.isDocument == true }
+
+    /// True when the viewer shows a PDF. Glimpse can zoom and rotate a PDF, but not other documents.
+    var showsPDF: Bool { showsDocument && document?.isPDF == true }
+
+    /// True for the image canvas, which zooms and rotates.
+    var showsImage: Bool { !isGridMode && current?.kind == .image }
+
+    /// True when the canvas, the player or the document view has something for the current item (it can still be loading).
+    var hasViewerContent: Bool { canvasContent != nil || video.url != nil || document != nil }
 
     /// True for a new window that shows nothing yet.
     var isBlank: Bool { source == nil }
@@ -133,8 +151,9 @@ final class ViewerModel {
         return NSEdgeInsets(top: topInset, left: 0, bottom: bottom, right: right)
     }
 
-    /// The player controls sit at the bottom of the video. Keep them clear of the filmstrip in full screen too.
-    var videoInsets: NSEdgeInsets {
+    /// The player controls and the sheet tabs of a spreadsheet sit at the bottom.
+    /// Keep them clear of the filmstrip in full screen too.
+    var stageInsets: NSEdgeInsets {
         var insets = canvasInsets
         if isFullScreen && showThumbnails && items.count > 1 { insets.bottom = Layout.filmstripReserved }
         return insets
@@ -156,12 +175,16 @@ final class ViewerModel {
     var windowSubtitle: String {
         guard hasItems else { return isScanning ? "Loading…" : "" }
         if isGridMode { return itemCountDescription }
-        return "\(index + 1) of \(items.count)"
+        let position = "\(index + 1) of \(items.count)"
+        guard showsPDF, let page = documentPage, page.count > 1 else { return position }
+        return "\(position)  ·  Page \(page.index + 1) of \(page.count)"
     }
 
     private var itemCountDescription: String {
         let videos = items.lazy.filter(\.isVideo).count
-        let noun = videos == 0 ? "image" : videos == items.count ? "video" : "item"
+        let documents = items.lazy.filter(\.isDocument).count
+        let noun = videos == items.count ? "video" : documents == items.count ? "document"
+            : videos + documents == 0 ? "image" : "item"
         return items.count == 1 ? "1 \(noun)" : "\(items.count) \(noun)s"
     }
 
@@ -278,6 +301,7 @@ final class ViewerModel {
         loadFailed = false
         info = nil
         stopVideo()
+        closeDocument()
     }
 
     // MARK: - Navigation
@@ -345,8 +369,8 @@ final class ViewerModel {
         }
     }
 
-    /// The video stays in the player (paused) while the grid shows.
-    private var displayedURL: URL? { video.url ?? canvasContent?.url }
+    /// The video stays in the player (paused) while the grid shows. So does the document.
+    private var displayedURL: URL? { video.url ?? document?.url ?? canvasContent?.url }
 
     func openViewer(at newIndex: Int) {
         guard items.indices.contains(newIndex) else { return }
@@ -366,11 +390,17 @@ final class ViewerModel {
             return
         }
         loadFailed = false
-        if item.isVideo {
-            loadVideo(item.url)
-        } else {
+        switch item.kind {
+        case .image:
             if video.url != nil { stopVideo() }
+            closeDocument()
             loadImage(item.url)
+        case .video:
+            closeDocument()
+            loadVideo(item.url)
+        case .document:
+            if video.url != nil { stopVideo() }
+            loadDocument(item)
         }
         prefetchNeighbors()
     }
@@ -435,11 +465,59 @@ final class ViewerModel {
         videoSize = nil
     }
 
+    private func loadDocument(_ item: ImageItem) {
+        // The canvas stays empty under a document. A blurred page would only make a gray ambient background.
+        base = nil
+        canvasContent = nil
+        ambientImage = nil
+        ambientKey = nil
+        let url = item.url
+        guard DocumentDecoder.isPDF(url) else {
+            documentPage = nil
+            document = .preview(url, modified: item.modified)
+            return
+        }
+        // The previous document stays until the PDF is open. This avoids a blank flash.
+        loadTask = Task { [weak self] in
+            let loaded = await Task.detached(priority: .userInitiated) { DocumentDecoder.loadPDF(url) }.value
+            guard let self, !Task.isCancelled, self.current?.url == url else { return }
+            self.documentPage = nil
+            if let loaded {
+                self.document = .pdf(url, loaded.document)
+            } else {
+                self.loadFailed = true
+                self.document = nil
+            }
+        }
+    }
+
+    private func closeDocument() {
+        document = nil
+        documentPage = nil
+    }
+
+    /// Called by the PDF view when a different page scrolls into view.
+    func documentPageChanged(_ page: DocumentPage?) {
+        if documentPage != page { documentPage = page }
+    }
+
+    private var pdfView: DocumentPDFView? {
+        showsPDF ? documentView as? DocumentPDFView : nil
+    }
+
+    /// Makes the document view receive the keys that scroll it.
+    func focusDocument() {
+        guard showsDocument, let view = documentView, let window = view.window else { return }
+        // Quick Look shows Office files in a web view inside its own view. Only the web view scrolls with the keys.
+        let target = view is DocumentPDFView ? view : view.deepestKeyView ?? view
+        if window.firstResponder !== target { window.makeFirstResponder(target) }
+    }
+
     private func prefetchNeighbors() {
         guard let current else { return }
-        // Videos stream from the file, so only images are decoded ahead.
+        // Videos stream from the file and documents open quickly, so only images are decoded ahead.
         let neighbors = [index + direction, index + 2 * direction, index - direction]
-            .filter { items.indices.contains($0) && !items[$0].isVideo }
+            .filter { items.indices.contains($0) && items[$0].kind == .image }
             .map { items[$0].url }
         pipeline.cancelFullRequests(except: Set(neighbors + [current.url]))
         neighbors.forEach(pipeline.prefetch)
@@ -495,7 +573,11 @@ final class ViewerModel {
     // MARK: - Commands
 
     func rotate(by turns: Int) {
-        guard !isGridMode, base != nil else { return }
+        if let pdfView {
+            pdfView.rotatePages(by: turns)
+            return
+        }
+        guard showsImage, base != nil else { return }
         rotation = ((rotation + turns) % 4 + 4) % 4
         applyRotation()
     }
@@ -503,7 +585,10 @@ final class ViewerModel {
     func zoomIn() {
         if isGridMode {
             gridTileSize = min(gridTileSize + 40, 420)
-        } else if !showsVideo {
+        } else if let pdfView {
+            pdfView.zoomIn()
+            reportZoom(of: pdfView)
+        } else if showsImage {
             canvas?.zoomIn()
         }
     }
@@ -511,24 +596,43 @@ final class ViewerModel {
     func zoomOut() {
         if isGridMode {
             gridTileSize = max(gridTileSize - 40, 90)
-        } else if !showsVideo {
+        } else if let pdfView {
+            pdfView.zoomOut()
+            reportZoom(of: pdfView)
+        } else if showsImage {
             canvas?.zoomOut()
         }
     }
 
     func zoomToFit() {
-        guard !isGridMode, !showsVideo else { return }
-        canvas?.zoomToFit(animated: true, userInitiated: true)
+        if let pdfView {
+            pdfView.zoomToFit()
+            reportZoom(of: pdfView)
+        } else if showsImage {
+            canvas?.zoomToFit(animated: true, userInitiated: true)
+        }
     }
 
     func zoomToActualSize() {
-        guard !isGridMode, !showsVideo else { return }
-        canvas?.zoomToActualSize()
+        if let pdfView {
+            pdfView.zoomToActualSize()
+            reportZoom(of: pdfView)
+        } else if showsImage {
+            canvas?.zoomToActualSize()
+        }
     }
 
     func toggleZoom() {
-        guard !isGridMode, !showsVideo else { return }
-        canvas?.toggleZoom()
+        if let pdfView {
+            pdfView.toggleZoom()
+            reportZoom(of: pdfView)
+        } else if showsImage {
+            canvas?.toggleZoom()
+        }
+    }
+
+    private func reportZoom(of pdfView: DocumentPDFView) {
+        canvasDidZoom(percent: pdfView.zoomPercent, isFit: pdfView.isFitMode)
     }
 
     // MARK: - Video
@@ -603,10 +707,10 @@ final class ViewerModel {
 
     func copyCurrent() {
         guard let item = current else { return }
-        if item.isVideo {
-            PasteboardWriter.copyFile(at: item.url)
-        } else {
+        if item.kind == .image {
             PasteboardWriter.copyImage(at: item.url)
+        } else {
+            PasteboardWriter.copyFile(at: item.url)
         }
         showToast("Copied", symbol: "doc.on.doc")
     }

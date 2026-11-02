@@ -28,7 +28,8 @@ Glimpse fixes this. Double-click an image (or choose **Open With ▸ Glimpse**),
 - **Zoom and pan**: pinch, ⌥-scroll or the mouse wheel zooms at the pointer. Double-click switches between "fit" and a close-up. Drag to pan. 100% means one image pixel on one screen pixel.
 - **Modern UI**: Liquid Glass on macOS 26 (translucent materials on macOS 14–15), a blurred ambient background from the current image, and full screen with controls that hide.
 - **Videos**: MOV, MP4, M4V and other files that macOS can play show in the same folder sequence, with the system player controls. Seek, step by frame, change the speed and the volume from the keyboard, loop, and use picture in picture. A long video starts again where you stopped it. Thumbnails show the duration.
-- **Info panel**: dimensions, color profile, camera, lens, exposure, date taken and GPS location (press **I**). For videos: duration, frame rate, codec, HDR, bit rate and audio.
+- **Documents**: PDF, Word (DOCX, DOC), Excel (XLSX, XLS, CSV), PowerPoint (PPTX, PPT), Pages, Numbers, Keynote, RTF and OpenDocument files show in the same folder sequence. PDFs open with PDFKit: the whole page fits, and you can scroll, zoom, rotate, select text and unlock a protected file. Other documents show with Quick Look, so you do not need Office or iWork. Spreadsheets keep their sheet tabs.
+- **Info panel**: dimensions, color profile, camera, lens, exposure, date taken and GPS location (press **I**). For videos: duration, frame rate, codec, HDR, bit rate and audio. For documents: pages, page size, title, author and the app that made the file.
 - **Clean up a folder**: ⌘⌫ moves the image to the Trash and shows the next one. ⌘Z puts it back.
 - **Live folder**: new, removed and renamed files show up at once.
 - **Formats**: everything that macOS can read, including JPEG, PNG, HEIC/HEIF, AVIF, WebP, GIF (animated), TIFF, BMP, PSD, ICNS and camera RAW. EXIF orientation is applied.
@@ -99,6 +100,19 @@ While a video shows, ← → still go to the previous or next file. These keys c
 | ⌥⌘L | Loop |
 | ⇧⌘C | Copy the current frame |
 
+While a document shows, ← → also go to the previous or next file. These keys control the document:
+
+| Key | Action |
+| --- | --- |
+| ↑ ↓ / Space | Scroll (⇧Space: scroll back) |
+| Page Up / Page Down | Scroll by a page |
+| Home / End | Start / end of the document |
+| + / − | Zoom in / out (PDF) |
+| Z | Whole page ↔ page width (PDF) |
+| ⌘0 / ⌘9 | Actual size / whole page (PDF) |
+| R / ⇧R | Rotate right / left (PDF, view only) |
+| ⌘C | Copy the selected text (in a PDF without selected text: the file) |
+
 Single-key shortcuts use the key position, so they also work with a non-Latin input source (for example, Korean).
 
 ## How it works
@@ -107,13 +121,14 @@ Single-key shortcuts use the key position, so they also work with a non-Latin in
 Sources/Glimpse
 ├── App/        App delegate, menus, window controller (toolbar, keyboard)
 ├── Model/      Folder scanning and sorting, folder watcher, ViewerModel (@Observable), video playback
-├── Imaging/    ImageIO and AVFoundation decoding, background pipeline with caches, metadata, pasteboard
+├── Imaging/    ImageIO, AVFoundation and Quick Look decoding, background pipeline with caches, metadata, pasteboard
 ├── Canvas/     Zoomable NSScrollView; the image is a layer, so the GPU scales it
-└── Views/      SwiftUI: filmstrip, grid, info panel, empty state, overlays
+└── Views/      SwiftUI: filmstrip, grid, info panel, document stage, empty state, overlays
 ```
 
 - One window shows one folder. Opening one file scans its folder. Opening several files shows only those files.
 - Videos play with AVKit's `AVPlayerView`. One `AVPlayer` serves a window, so the volume and the speed stay the same from video to video. Video thumbnails come from `AVAssetImageGenerator` through the same thumbnail cache as images.
+- PDFs show in PDFKit's `PDFView`. Other documents show in Quick Look's `QLPreviewView`, which uses the previews that macOS includes. Document thumbnails come from `QLThumbnailGenerator`. Plain text files are not part of the sequence, because a text file next to photos is usually a note.
 - `ImagePipeline` decodes on `OperationQueue`s. Full images are cached (up to 1/8 of the memory). Thumbnails are cached separately, and a thumbnail request stops when its cell scrolls away.
 - The app is not sandboxed, because a sandboxed app cannot read the other files in the folder of the file that you opened. macOS can ask once for access to folders such as Desktop or Downloads.
 

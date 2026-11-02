@@ -112,6 +112,13 @@ struct ShortcutsOverlay: View {
             ("+ −", "Volume up / down"),
             ("M", "Mute"),
         ]),
+        ("Document", [
+            ("← →", "Previous / next file"),
+            ("↑ ↓  Space", "Scroll (⇧Space: back)"),
+            ("Home End", "Start / end of the document"),
+            ("+ −  Z", "Zoom a PDF"),
+            ("R", "Rotate a PDF (⇧ for left)"),
+        ]),
     ]
 
     var body: some View {
@@ -134,10 +141,11 @@ struct ShortcutsOverlay: View {
                     }
                     GridRow {
                         group(4)
-                        VStack(alignment: .leading, spacing: 20) {
-                            group(2)
-                            group(3)
-                        }
+                        group(5)
+                    }
+                    GridRow {
+                        group(2)
+                        group(3)
                     }
                 }
             }

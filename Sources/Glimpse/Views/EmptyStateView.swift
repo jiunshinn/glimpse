@@ -70,12 +70,12 @@ struct EmptyStateView: View {
     }
 
     private var title: String {
-        isFolderWithoutImages ? "No images or videos in “\(model.collectionName)”" : "Drop images or a folder here"
+        isFolderWithoutImages ? "No images, videos or documents in “\(model.collectionName)”" : "Drop images or a folder here"
     }
 
     private var subtitle: String {
         isFolderWithoutImages
-            ? "Glimpse shows JPEG, PNG, HEIC, GIF, WebP, TIFF, RAW, MOV, MP4 and more."
+            ? "Glimpse shows JPEG, PNG, HEIC, GIF, WebP, TIFF, RAW, MOV, MP4, PDF, Word, Excel and more."
             : "Open one image and browse the whole folder with the arrow keys."
     }
 }

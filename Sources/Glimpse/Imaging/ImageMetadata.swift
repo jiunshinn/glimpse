@@ -1,6 +1,8 @@
 import AVFoundation
+import CoreServices
 import Foundation
 import ImageIO
+import PDFKit
 
 struct ImageInfo: Sendable {
     struct Row: Identifiable, Sendable {
@@ -32,6 +34,9 @@ enum ImageMetadata {
         ])
         if let type = values?.contentType, VideoDecoder.isPlayable(type) {
             return await loadVideo(url, values: values)
+        }
+        if let type = values?.contentType, !type.conforms(to: .image), DocumentDecoder.isDocument(type) {
+            return loadDocument(url, type: type, values: values)
         }
         return loadImage(url, values: values)
     }
@@ -196,6 +201,73 @@ enum ImageMetadata {
         }
 
         return ImageInfo(url: url, sections: sections, coordinate: coordinate)
+    }
+
+    // MARK: - Documents
+
+    private static func loadDocument(_ url: URL, type: UTType, values: URLResourceValues?) -> ImageInfo {
+        var rows: [ImageInfo.Row] = []
+        var software: String?
+        if type.conforms(to: .pdf), let pdf = PDFDocument(url: url) {
+            if pdf.isLocked {
+                rows.append(.init(label: "Security", value: "Password protected"))
+            } else {
+                rows.append(.init(label: "Pages", value: "\(pdf.pageCount)"))
+                if let page = pdf.page(at: 0) {
+                    let size = page.bounds(for: .cropBox).size
+                    let rotated = page.rotation % 180 == 0 ? size : CGSize(width: size.height, height: size.width)
+                    rows.append(.init(label: "Page Size", value: formatPageSize(rotated)))
+                }
+            }
+            let attributes = pdf.documentAttributes ?? [:]
+            if let title = attributes[PDFDocumentAttribute.titleAttribute] as? String, !title.isEmpty {
+                rows.append(.init(label: "Title", value: title))
+            }
+            if let author = attributes[PDFDocumentAttribute.authorAttribute] as? String, !author.isEmpty {
+                rows.append(.init(label: "Author", value: author))
+            }
+            rows.append(.init(label: "Version", value: "PDF \(pdf.majorVersion).\(pdf.minorVersion)"))
+            software = [attributes[PDFDocumentAttribute.creatorAttribute], attributes[PDFDocumentAttribute.producerAttribute]]
+                .compactMap { $0 as? String }.first { !$0.isEmpty }
+        } else if let item = MDItemCreateWithURL(kCFAllocatorDefault, url as CFURL) {
+            // Spotlight reads Office and iWork files, so Glimpse does not have to parse them.
+            func attribute<T>(_ key: CFString) -> T? { MDItemCopyAttribute(item, key) as? T }
+            if let pages: Int = attribute(kMDItemNumberOfPages), pages > 0 {
+                rows.append(.init(label: "Pages", value: "\(pages)"))
+            }
+            // Without a title of its own, a file can report its name as the title.
+            if let title: String = attribute(kMDItemTitle), !title.isEmpty,
+               title != url.lastPathComponent, title != url.deletingPathExtension().lastPathComponent {
+                rows.append(.init(label: "Title", value: title))
+            }
+            if let authors: [String] = attribute(kMDItemAuthors), !authors.isEmpty {
+                rows.append(.init(label: authors.count == 1 ? "Author" : "Authors", value: authors.joined(separator: ", ")))
+            }
+            software = attribute(kMDItemCreator)
+        }
+        rows += kindAndSizeRows(values)
+        let sections: [ImageInfo.Section] = [
+            .init(title: "Document", rows: rows),
+            fileSection(url, values: values, taken: nil, software: software),
+        ]
+        return ImageInfo(url: url, sections: sections, coordinate: nil)
+    }
+
+    /// For example "A4  ·  210 × 297 mm" or "Letter  ·  8.5 × 11 in". The unit follows the region settings.
+    private static func formatPageSize(_ points: CGSize) -> String {
+        let papers: [(name: String, width: CGFloat, height: CGFloat)] = [
+            ("A3", 842, 1191), ("A4", 595, 842), ("A5", 420, 595),
+            ("Letter", 612, 792), ("Legal", 612, 1008), ("Tabloid", 792, 1224),
+        ]
+        let short = min(points.width, points.height), long = max(points.width, points.height)
+        let paper = papers.first { abs($0.width - short) < 3 && abs($0.height - long) < 3 }?.name
+        let size: String
+        if Locale.current.measurementSystem == .us {
+            size = "\(formatNumber(points.width / 72)) × \(formatNumber(points.height / 72)) in"
+        } else {
+            size = "\(Int((points.width / 72 * 25.4).rounded())) × \(Int((points.height / 72 * 25.4).rounded())) mm"
+        }
+        return paper.map { "\($0)  ·  \(size)" } ?? size
     }
 
     // MARK: - Shared sections

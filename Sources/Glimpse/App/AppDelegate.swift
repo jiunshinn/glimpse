@@ -40,7 +40,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 MainActor.assumeIsolated {
-                    guard let model = self?.controllers.first?.model else { return }
+                    guard let controller = self?.controllers.first else { return }
+                    let model = controller.model
+                    if command.hasPrefix("key:") {
+                        controller.simulateKey(String(command.dropFirst(4)))
+                        return
+                    }
                     switch command {
                     case "next": model.next()
                     case "info": model.showInfo = true
@@ -124,11 +129,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func openDocument(_ sender: Any?) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image, .folder] + VideoDecoder.playableTypes
+        panel.allowedContentTypes = [.image, .folder] + VideoDecoder.playableTypes + DocumentDecoder.types
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = true
-        panel.message = "Choose an image, a video or a folder."
+        panel.message = "Choose an image, a video, a document or a folder."
         panel.prompt = "Open"
         panel.begin { [weak self] response in
             guard response == .OK else { return }

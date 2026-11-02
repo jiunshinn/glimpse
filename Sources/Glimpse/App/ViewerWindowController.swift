@@ -140,10 +140,18 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     /// Single keys without ⌘. Commands with ⌘ go through the menus.
     private func handleKeyDown(_ event: NSEvent) -> Bool {
+        // A text field gets all keys, for example the password field of a locked PDF.
+        if let text = window?.firstResponder as? NSText, text.isEditable { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             .subtracting([.function, .numericPad, .capsLock])
         guard flags.isDisjoint(with: [.command, .control, .option]) else { return false }
         let shift = flags.contains(.shift)
+
+        // While a document shows, the document view gets these keys and scrolls. ← → still change the file.
+        if model.showsDocument, Self.documentScrollKeys.contains(Int(event.keyCode)) {
+            model.focusDocument()
+            return false
+        }
 
         switch Int(event.keyCode) {
         case kVK_LeftArrow where shift && model.showsVideo: model.seekVideo(by: -5)
@@ -176,6 +184,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         }
         return true
     }
+
+    private static let documentScrollKeys: Set<Int> = [
+        kVK_UpArrow, kVK_DownArrow, kVK_PageUp, kVK_PageDown, kVK_Home, kVK_End, kVK_Space,
+    ]
 
     private func handleCharacterKey(_ event: NSEvent, shift: Bool) -> Bool {
         let character = KeyboardLayout.character(for: event)
@@ -278,17 +290,16 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         let hasImage = model.current != nil
-        let inViewer = hasImage && !model.isGridMode
-        let showsImage = inViewer && !model.showsVideo
+        let canZoom = model.showsImage || model.showsPDF
         switch item.action {
         case #selector(nextImage(_:)), #selector(lastImage(_:)):
             return model.index < model.items.count - 1
         case #selector(previousImage(_:)), #selector(firstImage(_:)):
             return model.index > 0 && model.hasItems
         case #selector(zoomIn(_:)), #selector(zoomOut(_:)):
-            return hasImage && !model.showsVideo
+            return canZoom || (hasImage && model.isGridMode)
         case #selector(zoomToActualSize(_:)), #selector(zoomToFit(_:)), #selector(rotateLeft(_:)), #selector(rotateRight(_:)):
-            return showsImage
+            return canZoom
         case #selector(togglePlayback(_:)), #selector(jumpBack(_:)), #selector(jumpForward(_:)),
              #selector(previousFrame(_:)), #selector(nextFrame(_:)), #selector(slower(_:)), #selector(faster(_:)),
              #selector(volumeUp(_:)), #selector(volumeDown(_:)), #selector(copyFrame(_:)):
@@ -329,7 +340,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         switch item.itemIdentifier {
-        case .rotate: model.current != nil && !model.isGridMode && !model.showsVideo
+        case .rotate: model.showsImage || model.showsPDF
         case .trash: model.current != nil
         case .grid: model.hasItems
         default: true
@@ -436,6 +447,31 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         [.fullScreen, .autoHideMenuBar, .autoHideToolbar, .autoHideDock]
     }
 }
+
+#if DEBUG
+extension ViewerWindowController {
+    /// Development aid: presses a key in this window only, for example "down" or "shift+space".
+    /// The key takes the same path as a real key: first the key handler, then the first responder.
+    func simulateKey(_ name: String) {
+        let keys: [String: (code: Int, character: Int)] = [
+            "left": (kVK_LeftArrow, NSLeftArrowFunctionKey), "right": (kVK_RightArrow, NSRightArrowFunctionKey),
+            "up": (kVK_UpArrow, NSUpArrowFunctionKey), "down": (kVK_DownArrow, NSDownArrowFunctionKey),
+            "pageup": (kVK_PageUp, NSPageUpFunctionKey), "pagedown": (kVK_PageDown, NSPageDownFunctionKey),
+            "home": (kVK_Home, NSHomeFunctionKey), "end": (kVK_End, NSEndFunctionKey), "space": (kVK_Space, 0x20),
+        ]
+        let shift = name.hasPrefix("shift+")
+        guard let window, let key = keys[shift ? String(name.dropFirst(6)) : name],
+              let scalar = UnicodeScalar(key.character) else { return }
+        let characters = String(Character(scalar))
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: shift ? [.shift] : [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, characters: characters,
+            charactersIgnoringModifiers: characters, isARepeat: false, keyCode: UInt16(key.code)
+        ) else { return }
+        if !handleKeyDown(event) { window.sendEvent(event) }
+    }
+}
+#endif
 
 /// Maps key events to ASCII characters. With a non-Latin input source (for example Korean),
 /// the event gives a non-ASCII character, so the physical key position is used instead.

@@ -6,7 +6,7 @@ struct VideoStage: View {
     let model: ViewerModel
 
     var body: some View {
-        let insets = model.videoInsets
+        let insets = model.stageInsets
         PlayerViewRepresentable(player: model.video.player) { event in
             // A two-finger swipe over the video changes the item, as it does over an image.
             model.canvas?.scrollWheel(with: event)
