@@ -9,6 +9,9 @@ enum OutgoingDrag {
 
     static func begin(_ urls: [URL]) {
         self.urls = urls
+        // A phone photo that is still a preview gets its full file now. The file changes in one step,
+        // so an app that reads it at the drop gets the full file when the download is done by then.
+        DeviceLibrary.shared.wantFull(urls)
         // A drag that a SwiftUI view starts does not tell when it ends.
         // A drag from another app makes Glimpse inactive first, so forget the files then.
         if observer == nil {

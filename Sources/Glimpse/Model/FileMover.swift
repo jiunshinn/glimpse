@@ -19,6 +19,8 @@ enum FileMover {
     /// Finder moves a file on the same disk and copies a file to another disk. ⌥ always copies.
     static func mode(for urls: [URL], into folder: URL) -> Mode {
         if NSEvent.modifierFlags.contains(.option) { return .copy }
+        // A file from a phone stays on the phone: it is copied, never moved out of the cache.
+        if urls.contains(where: DeviceLibrary.isCacheItem) { return .copy }
         let target = volume(of: folder)
         return urls.allSatisfy { volume(of: $0)?.isEqual(target) ?? false } ? .move : .copy
     }

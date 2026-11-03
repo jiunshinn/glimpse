@@ -25,6 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             showEmptyWindow()
         }
         NSApp.activate()
+        PeerService.shared.startIfPaired()
+        UsbAccessoryWatcher.shared.start()
         #if DEBUG
         applyDebugCommands()
         #endif
@@ -46,6 +48,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     guard let self, let controller = self.frontController else { return }
                     let model = controller.model
                     let workspace = Workspace.shared
+                    if command == "pair" {
+                        PairingWindowController.shared.present()
+                        return
+                    }
                     if command.hasPrefix("key:") {
                         controller.simulateKey(String(command.dropFirst(4)))
                         return
@@ -336,6 +342,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             let urls = panel.urls
             MainActor.assumeIsolated { self?.open(urls) }
         }
+    }
+
+    @objc func connectPhone(_ sender: Any?) {
+        PairingWindowController.shared.present()
     }
 
     @objc func addFolderToWorkspace(_ sender: Any?) {

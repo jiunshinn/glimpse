@@ -30,6 +30,12 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Glimpse connects to Glimpse for Android on your phone over the local network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_glimpse._tcp</string>
+	</array>
 	<key>NSHumanReadableCopyright</key>
 	<string>Open source under the MIT License.</string>
 	<key>CFBundleDocumentTypes</key>

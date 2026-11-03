@@ -8,6 +8,8 @@ enum SidebarItem: Hashable {
     case pinned(URL)
     case folder(URL)
     case board(UUID)
+    /// An album or a folder of a paired phone.
+    case device(DeviceLocation)
 }
 
 /// What a tab shows.

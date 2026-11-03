@@ -1,0 +1,176 @@
+openapi: 3.1.0
+info:
+  title: Glimpse peer API
+  version: "1"
+  description: |
+    HTTPS between paired Glimpse devices on the local network.
+    TLS is mutual: each side shows a self-signed certificate, and each side pins the other side's
+    SHA-256 fingerprint (base64url, no padding). An unpaired certificate may only call /v1/info and /v1/pair.
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host: { default: 192.168.1.20 }
+      port: { default: "53817" }
+paths:
+  /v1/info:
+    get:
+      summary: Name, platform, versions, and whether the caller is paired
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Info" }
+  /v1/pair:
+    post:
+      summary: Pair with a one-time code from the QR code
+      description: The callee stores the caller's certificate fingerprint. One code pairs one device.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PairRequest" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PairResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/hello:
+    post:
+      summary: A phone tells a paired Mac the port of its own server
+      description: The Mac takes the phone's address from the connection. Phones say hello every 30 seconds.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [port]
+              properties:
+                port: { type: integer }
+                name: { type: string }
+      responses:
+        "200": { description: OK }
+        "401": { $ref: "#/components/responses/Error" }
+  /v1/albums:
+    get:
+      summary: Albums (MediaStore buckets on a phone; shared folders on a Mac later)
+      x-status: phone
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [albums]
+                properties:
+                  albums:
+                    type: array
+                    items: { $ref: "#/components/schemas/Album" }
+        "401": { $ref: "#/components/responses/Error" }
+  /v1/albums/{albumId}/items:
+    get:
+      summary: Items in an album, newest first, in pages (query cursor, limit up to 2000)
+      x-status: phone
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Item" } }
+                  next: { type: string, description: The cursor of the next page. Absent on the last page. }
+  /v1/files:
+    get:
+      summary: The entries of a folder in the phone's shared storage (query path, "" = the top folder)
+      x-status: phone
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path: { type: string }
+                  items: { type: array, items: { $ref: "#/components/schemas/Item" } }
+        "403": { description: "files_not_allowed: All files access is off on the phone" }
+  /v1/items/{itemId}/thumbnail:
+    get:
+      summary: A JPEG thumbnail (query size = longest side in pixels)
+      x-status: phone
+  /v1/items/{itemId}/content:
+    get:
+      summary: The original file, with Range support (206 for "Range bytes=a-b")
+      x-status: phone
+  /v1/albums/{albumId}/uploads:
+    post:
+      summary: Send a file to the peer
+      x-status: planned
+  /v1/events:
+    get:
+      summary: WebSocket with change events
+      x-status: planned
+components:
+  responses:
+    Error:
+      description: An error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Info:
+      type: object
+      required: [id, name, platform, protocol, paired]
+      properties:
+        id: { type: string, description: First 16 characters of the certificate fingerprint }
+        name: { type: string }
+        platform: { type: string, enum: [mac, android] }
+        appVersion: { type: string }
+        protocol: { type: array, items: { type: integer } }
+        capabilities: { type: array, items: { type: string } }
+        paired: { type: boolean, description: True when the caller's certificate is paired }
+    PairRequest:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string }
+        name: { type: string, maxLength: 64 }
+        platform: { type: string, enum: [mac, android] }
+    PairResponse:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+    Item:
+      type: object
+      required: [id, name, kind]
+      properties:
+        id: { type: string, description: "Opaque. On a phone: m<MediaStore id> or f<base64url path>" }
+        name: { type: string }
+        kind: { type: string, enum: [folder, image, video, document, other] }
+        mime: { type: string }
+        size: { type: integer }
+        width: { type: integer }
+        height: { type: integer }
+        path: { type: string, description: For a folder entry, its path for /v1/files }
+        count: { type: integer, description: For a folder, the number of entries }
+        modified: { type: number, description: Seconds since 1970 }
+        taken: { type: number, description: Seconds since 1970 }
+    Album:
+      type: object
+      required: [id, name, count]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        count: { type: integer }
+        coverItemId: { type: string }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [bad_request, not_paired, bad_code, pairing_closed, not_found, method_not_allowed, files_not_allowed, no_thumbnail]
+        message: { type: string, description: Text for logs, not for the UI }
