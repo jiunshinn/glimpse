@@ -593,6 +593,8 @@ final class ViewerModel {
         }
         loadFailed = false
         Workspace.shared.markSeen(item.url)
+        // A photo from a phone shows as a preview until its full file arrives.
+        DeviceLibrary.shared.wantFull([item.url])
         switch item.kind {
         case .image:
             if video.url != nil { stopVideo() }
@@ -725,6 +727,7 @@ final class ViewerModel {
             .map { items[$0].url }
         pipeline.cancelFullRequests(except: Set(neighbors + [current.url]))
         neighbors.forEach(pipeline.prefetch)
+        DeviceLibrary.shared.wantFull(neighbors)
     }
 
     private func setAmbient(_ image: CGImage, for url: URL) {

@@ -77,6 +77,8 @@ struct SidebarView: View {
                 .help("Add a folder to the workspace (⇧⌘O). You can also drop a folder here.")
             }
 
+            DevicesSection(tab: tab)
+
             Section("Tags") {
                 ForEach(workspace.knownTags, id: \.name) { tag in
                     Label {

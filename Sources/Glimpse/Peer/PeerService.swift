@@ -37,7 +37,7 @@ final class PeerService: ObservableObject {
 
     let macName = Host.current().localizedName ?? "Mac"
     private let directory: URL
-    private var identity: PeerIdentity?
+    private var storedIdentity: PeerIdentity?
     private var server: PeerServer?
 
     private init() {
@@ -46,6 +46,12 @@ final class PeerService: ObservableObject {
     }
 
     var deviceID: String? { identity?.deviceID }
+
+    /// The Mac's TLS identity. The Mac also shows it as a client when it connects to a phone.
+    var identity: PeerIdentity? {
+        if storedIdentity == nil { storedIdentity = try? PeerIdentity.loadOrCreate(in: directory) }
+        return storedIdentity
+    }
 
     /// Starts the server at launch when a phone is paired, so the phone can reconnect.
     func startIfPaired() {
@@ -96,6 +102,7 @@ final class PeerService: ObservableObject {
     func unpair(_ device: PairedDevice) {
         devices.removeAll { $0.fingerprint == device.fingerprint }
         save()
+        DeviceLibrary.shared.reloadPhones()
         if devices.isEmpty, offer == nil { stopServer() }
     }
 
@@ -105,7 +112,7 @@ final class PeerService: ObservableObject {
         guard server == nil else { return }
         do {
             let identity = try PeerIdentity.loadOrCreate(in: directory)
-            self.identity = identity
+            storedIdentity = identity
             let server = PeerServer(identity: identity) { request, client in
                 await PeerService.shared.handle(request, from: client)
             }
@@ -168,6 +175,14 @@ final class PeerService: ObservableObject {
                 return .error(401, "not_paired", "Pair this device with the Mac first.")
             }
             switch (request.method, request.path) {
+            case ("POST", "/v1/hello"):
+                // The phone's server listens on this port at the address of the request.
+                guard let port = request.jsonBody?["port"] as? Int, (1...65535).contains(port), let host = client.host else {
+                    return .error(400, "bad_request", "The body needs the port of the phone's server.")
+                }
+                DeviceLibrary.shared.hello(fingerprint: client.fingerprint, host: host, port: port,
+                                           name: request.jsonBody?["name"] as? String)
+                return .json(200, ["id": identity?.deviceID ?? ""])
             case ("GET", "/v1/albums"):
                 // Phase 3 fills this with the folders shared with the phone.
                 return .json(200, ["albums": [Any]()])
@@ -197,6 +212,7 @@ final class PeerService: ObservableObject {
         devices.removeAll { $0.fingerprint == client.fingerprint }
         devices.append(device)
         save()
+        DeviceLibrary.shared.reloadPhones()
         self.offer = nil  // One code pairs one phone.
         justPaired = device
         return .json(200, ["id": identity?.deviceID ?? "", "name": macName])

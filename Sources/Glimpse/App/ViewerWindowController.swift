@@ -193,7 +193,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     /// The folder of this tab, if the workspace does not have it.
     var folderOutsideWorkspace: URL? {
-        guard tab.boardID == nil, case .folder(let url) = model.source, !Workspace.shared.contains(folder: url) else { return nil }
+        guard tab.boardID == nil, case .folder(let url) = model.source, !Workspace.shared.contains(folder: url),
+              !DeviceLibrary.shared.isCache(url) else { return nil }
         return url
     }
 
@@ -208,6 +209,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         case .smart(let list): target = .request(.smart(list))
         case .folder(let url), .pinned(let url): target = .request(.folder(url, selecting: nil))
         case .board(let id): target = .board(id)
+        case .device(let location): target = .request(.folder(DeviceLibrary.shared.open(location), selecting: nil))
         }
         let shown = present(target, placement: inNewTab ? .newTab : .reuseOrCurrent)
         shown.tab.sidebarSelection = item
@@ -368,7 +370,9 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             canonical = .board(id)
         } else {
             switch model.source {
-            case .folder(let url): canonical = Workspace.shared.folder(for: url).map { .folder($0.url) }
+            case .folder(let url):
+                canonical = DeviceLibrary.shared.location(forCacheFolder: url).map { .device($0) }
+                    ?? Workspace.shared.folder(for: url).map { .folder($0.url) }
             case .smart(let list): canonical = .smart(list)
             default: canonical = nil
             }

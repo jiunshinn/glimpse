@@ -6,6 +6,8 @@ import Security
 struct PeerClient {
     /// Fingerprint of the client certificate. Every phone has one, also before it pairs.
     var fingerprint: String
+    /// The address the request came from. A phone's own server listens there too.
+    var host: String?
 }
 
 /// HTTPS listener for the peer API, advertised with Bonjour as `_glimpse._tcp`.
@@ -135,7 +137,7 @@ private final class PeerConnection: @unchecked Sendable {
             switch state {
             case .ready:
                 guard let fingerprint = self.peerFingerprint() else { return self.cancel() }
-                self.client = PeerClient(fingerprint: fingerprint)
+                self.client = PeerClient(fingerprint: fingerprint, host: self.remoteHost())
                 self.receive()
             case .failed, .cancelled:
                 self.onClose()
@@ -148,6 +150,19 @@ private final class PeerConnection: @unchecked Sendable {
 
     func cancel() {
         connection.cancel()
+    }
+
+    private func remoteHost() -> String? {
+        guard case .hostPort(let host, _) = connection.endpoint else { return nil }
+        let text: String
+        switch host {
+        case .ipv4(let address): text = "\(address)"
+        case .ipv6(let address): text = "\(address)"
+        case .name(let name, _): text = name
+        @unknown default: return nil
+        }
+        // An IPv4 client of a dual-stack listener shows as "::ffff:10.0.0.2".
+        return text.hasPrefix("::ffff:") && text.contains(".") ? String(text.dropFirst(7)) : text
     }
 
     private func peerFingerprint() -> String? {
