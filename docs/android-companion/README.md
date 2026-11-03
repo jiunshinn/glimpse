@@ -1,6 +1,6 @@
 # Android companion: plan
 
-Status: idea and planning phase (2026-11-03). Nothing is built yet.
+Status: phase 0 (spike) is built and tested with the Android emulator (2026-11-03). A test on a real phone is still open. See [Spike results](#spike-results).
 
 **Goal:** Let a normal user browse the photos on their Android phone in Glimpse on the Mac, and browse the Mac's shared folders on the phone. The user must not turn on developer mode or install a driver.
 
@@ -92,7 +92,7 @@ flowchart LR
 | Photo access | `MediaStore` with `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO` (Android 13 and later). It supports the partial "selected photos" access on Android 14 and later. Albums are MediaStore buckets. |
 | Server | Runs in a foreground service while a Mac is connected. The service type is probably `connectedDevice`; confirm it in the spike. |
 | Discovery | `NsdManager`. |
-| QR scan | CameraX with a barcode decoder. ML Kit is not open source, so an F-Droid build needs ZXing. |
+| QR scan | CameraX with ZXing core, in the app. The system camera also works: the `glimpse://pair` link opens the app, which then asks "Pair with <Mac>?". |
 | Screens | Pairing, Mac (shared folders), viewer, transfers, settings (paired Macs, permissions). |
 
 ## Constraints and risks
@@ -104,7 +104,7 @@ flowchart LR
 | Permission prompts | The user can deny them, and the feature stops working. | Explain each prompt first. Show a fix button when a permission is missing. |
 | Changes to phone photos | Android asks the user on the phone to confirm each delete or move of another app's photo. | The first version is read-only for phone photos. |
 | Large files (RAW, long videos) | Slow over Wi-Fi. | Range requests, a progress UI, and video streaming in a later phase. |
-| Self-signed certificates | Android Keystore makes them. The Mac needs a way to make one. | Spike: Apple's `swift-certificates` package, or a small DER writer to stay dependency-free. |
+| Self-signed certificates | Android Keystore makes them. The Mac needs a way to make one. | Solved in the spike: a small DER writer and `SecIdentityCreate`. No library, no keychain prompt. |
 | Google Play policy for photo permissions | Google Play can refuse broad photo access. | Glimpse is a gallery-type app, so it should qualify. It needs a declaration form. |
 
 ## Phases
@@ -126,6 +126,37 @@ flowchart LR
 | 3. Phone browses the Mac | **Share with Phone**, the Mac tab, the swipe viewer, save to phone. | A user opens a shared Mac folder on the phone and saves a photo. |
 | 4. Transfers both ways | Share sheet target, upload to a Mac folder or board, progress UI. | A photo goes from Google Photos to a Glimpse board in two taps. |
 | 5. Optional | USB with AOA (`IOUSBHost` on the Mac), delete and move on the phone, video streaming. | To be decided. |
+
+## Spike results
+
+Built on branch `feature/android-companion`, 2026-11-03.
+
+| Done-when item | Result |
+| --- | --- |
+| A phone and a Mac pair | Passed (emulator, Android 14). The pairing link went in with `adb shell am start -d`. |
+| They reconnect after a restart | Passed. Both apps restarted, and the phone showed "Connected" again. |
+| An unpaired device is refused | Passed. No client certificate: TLS fails. An unpaired certificate: `401 not_paired`. A used or wrong code: `403 pairing_closed` or `401 bad_code`. |
+| The Mac removes a phone | Passed. The phone shows "The Mac removed this phone. Pair again." |
+| Bonjour discovery | The Mac advertises `_glimpse._tcp` with its TXT record (checked with `dns-sd`). The emulator cannot see mDNS on the Mac's network, so a real phone must test it. |
+| QR scan with the camera | Not tested yet. It needs a real phone. |
+
+Decisions from the spike:
+
+- The Mac key and certificate are stored in `~/Library/Application Support/Glimpse/Peer/Identity.json` with mode 0600, as `~/.ssh` keys are. The keychain asks for a password after each rebuild of an ad-hoc signed app, so it is not used yet. Move the key to the keychain when releases have a stable signature.
+- The QR code holds only the address, the port, the fingerprint and the code. The phone reads the Mac's name from `GET /v1/info`. A shorter URL makes a less dense code that is easier to scan.
+- The Mac server runs only while a phone is paired or the Connect Phone window is open.
+- The Mac app stays at the repository root for now. `android/` and `protocol/` sit next to it. See [monorepo.md](monorepo.md).
+
+How to run it:
+
+```sh
+# Mac: a test identity and device list, and the Connect Phone window at launch
+GLIMPSE_PEER_DIR=/tmp/glimpse-peer GLIMPSE_DEBUG=pair .build/debug/Glimpse   # prints "[Peer] pairing URL: …"
+
+# Android: build, install, and send the pairing URL from the Mac
+cd android && ./gradlew installDebug
+adb shell am start -a android.intent.action.VIEW -d '"glimpse://pair?…"' io.github.jiunshinn.glimpse
+```
 
 ## Open questions
 

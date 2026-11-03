@@ -1,6 +1,6 @@
 # Android companion: monorepo
 
-Status: idea (2026-11-03). Back to the [plan](README.md).
+Status: step 1 done (2026-11-03): `android/` and `protocol/` exist next to the Mac app at the root. The move to `macos/` waits until no feature branch is open. Back to the [plan](README.md).
 
 **Decision:** The macOS app, the Android app and the protocol between them live in this one repository. A protocol change and the code changes on both sides go into one pull request, so the two apps cannot drift apart.
 
