@@ -1,6 +1,6 @@
 # Android companion: plan
 
-Status: phase 0 (spike) is built and tested with the Android emulator and a real phone, a Galaxy S21 with Android 15 (2026-11-03). See [Spike results](#spike-results).
+Status (2026-11-03): phase 0 (pairing) and phase 2 (the Mac browses the phone's albums and folders) are built and tested on a Galaxy S21 with Android 15. See [Spike results](#spike-results) and [Phase 2 results](#phase-2-results). USB (AOA) is next.
 
 **Goal:** Let a normal user browse the photos on their Android phone in Glimpse on the Mac, and browse the Mac's shared folders on the phone. The user must not turn on developer mode or install a driver.
 
@@ -75,10 +75,10 @@ flowchart LR
 
 | Area | Change |
 | --- | --- |
-| Model | A device source lists albums and items from the API. It downloads each opened file to `~/Library/Caches/Glimpse/Devices/<device id>/`. The viewer then gets a normal file URL, so `ImageItem`, the canvas, the decoders and the video player do not change. |
-| Sidebar | A new **Devices** section with the paired phones and their albums. Online and offline states. **Connect Phone** shows the QR code. |
-| Thumbnails | Device items get their thumbnails from the API, not from a local decode. |
-| Live updates | A device album gets changes from the event stream, not from `FolderWatcher` (FSEvents). |
+| Model | `DeviceLibrary` keeps one cache folder per phone album or folder under `~/Library/Caches/Glimpse/Devices/<device id>/` (`Albums/<name>`, `Files/<path>`). Glimpse opens it as a normal folder, so `ImageItem`, the canvas, the decoders, boards and drag-out do not change. A photo arrives first as a preview with its real name. When the viewer shows it (or its neighbors), the full file takes its place, and the folder watcher reloads it. Videos and documents arrive whole. |
+| Sidebar | A **Devices** section: each phone with **Photos** (albums) and **Files** (a folder tree that loads when a row opens). Online and offline states. **File › Connect Phone…** shows the QR code. |
+| Thumbnails | The preview file comes from `GET /v1/items/{id}/thumbnail` (640 px asked; Samsung returns about 600 px). The pipeline decodes it like any file. |
+| Live updates | Opening an album or folder syncs it again. The album list loads again every minute while the phone says hello. An event stream comes later. |
 | Copy and move | A drop of a device item on a folder downloads it there (`FileMover`). A move or delete on the phone is not in the first version. |
 | Sharing | A **Share with Phone** list in `Workspace.json`. The peer server serves only these folders. |
 | Info.plist | `NSLocalNetworkUsageDescription` and `NSBonjourServices` (`_glimpse._tcp`). macOS 15 and later asks for local network access. |
@@ -90,7 +90,8 @@ flowchart LR
 | Language and UI | Kotlin, Jetpack Compose, Material 3. |
 | Minimum version | Android 10 (API 29), to be confirmed. |
 | Photo access | `MediaStore` with `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO` (Android 13 and later). It supports the partial "selected photos" access on Android 14 and later. Albums are MediaStore buckets. |
-| Server | Runs in a foreground service while a Mac is connected. The service type is probably `connectedDevice`; confirm it in the spike. |
+| File access | `MANAGE_EXTERNAL_STORAGE` ("All files access"), which the user turns on in Settings from the **Folders and files** row. Google Play allows it only for apps whose core feature needs it, such as file managers, after a declaration. Without it, the Mac shows only the albums. |
+| Server | `SharingService`: a foreground service of type `connectedDevice` with a "Sharing with <Mac>" notification and a **Stop sharing** action. It runs the phone's HTTPS server (port 53818, or any free port), registers `_glimpse._tcp`, and says hello to each paired Mac every 30 seconds. The **Share with your Mac** switch starts and stops it, and the app remembers the switch. |
 | Discovery | `NsdManager`. |
 | QR scan | CameraX with ZXing core, in the app. The system camera also works: the `glimpse://pair` link opens the app, which then asks "Pair with <Mac>?". |
 | Screens | Pairing, Mac (shared folders), viewer, transfers, settings (paired Macs, permissions). |
@@ -112,20 +113,22 @@ flowchart LR
 ```mermaid
 flowchart LR
     P0["0. Spike<br/>discovery, QR pairing,<br/>mutual TLS"] --> P1["1. Monorepo setup<br/>android/, protocol/, CI"]
-    P1 --> P2["2. Mac browses phone<br/>read-only"]
-    P2 --> P3["3. Phone browses Mac<br/>shared folders"]
-    P3 --> P4["4. Transfers both ways<br/>share sheet, drag and drop"]
-    P4 -.-> P5["5. Optional<br/>USB (AOA), phone edits"]
+    P1 --> P2["2. Mac browses phone<br/>albums and folders"]
+    P2 --> P3["3. USB without<br/>developer mode (AOA)"]
+    P3 --> P4["4. Phone browses Mac<br/>shared folders"]
+    P4 --> P5["5. Transfers both ways<br/>share sheet, drag and drop"]
+    P5 -.-> P6["6. Optional<br/>phone edits, streaming"]
 ```
 
 | Phase | Scope | Done when |
 | --- | --- | --- |
 | 0. Spike | Two test apps find each other with Bonjour, pair with a QR code and make a mutual TLS request. No product UI. | A phone and a Mac pair, reconnect after a restart, and refuse an unpaired device. |
 | 1. Monorepo setup | Add `android/` and `protocol/`, CI per platform. See [monorepo.md](monorepo.md). | Both apps build in CI from one repository. |
-| 2. Mac browses the phone | Devices sidebar, albums, thumbnails, viewer, drag to copy. Read-only. | A user pairs and browses the Camera album with the arrow keys. |
-| 3. Phone browses the Mac | **Share with Phone**, the Mac tab, the swipe viewer, save to phone. | A user opens a shared Mac folder on the phone and saves a photo. |
-| 4. Transfers both ways | Share sheet target, upload to a Mac folder or board, progress UI. | A photo goes from Google Photos to a Glimpse board in two taps. |
-| 5. Optional | USB with AOA (`IOUSBHost` on the Mac), delete and move on the phone, video streaming. | To be decided. |
+| 2. Mac browses the phone | Devices sidebar, albums and folders, previews, viewer, drag to copy. Read-only. **Done.** | A user pairs and browses an album and a folder with the arrow keys. |
+| 3. USB without developer mode | Android Open Accessory (AOA): the Mac (`IOUSBHost`) switches the phone to accessory mode, and the same API runs over the USB link. Moved here because some home routers isolate Wi-Fi devices. | A phone on a router that isolates devices browses over a cable, with no developer mode. |
+| 4. Phone browses the Mac | **Share with Phone**, the Mac tab, the swipe viewer, save to phone. | A user opens a shared Mac folder on the phone and saves a photo. |
+| 5. Transfers both ways | Share sheet target, upload to a Mac folder or board, progress UI. | A photo goes from Google Photos to a Glimpse board in two taps. |
+| 6. Optional | Delete and move on the phone, video streaming, an event stream for live updates. | To be decided. |
 
 ## Spike results
 
@@ -159,6 +162,26 @@ cd android && ./gradlew installDebug
 adb shell am start -a android.intent.action.VIEW -d '"glimpse://pair?…"' io.github.jiunshinn.glimpse
 ```
 
+## Phase 2 results
+
+Tested on 2026-11-03 with a Galaxy S21 (Android 15) on a phone hotspot.
+
+| Check | Result |
+| --- | --- |
+| The phone appears under **Devices** without a new pairing | Passed. The phone says hello; the Mac takes its address from the connection. |
+| **Photos**: albums with counts | Passed (Screenshots 10, Screen recordings 1). |
+| **Files**: the folder tree, loaded when a row opens | Passed (DCIM › Screenshots, Music › Samsung, …). |
+| An album opens as a grid at once | Passed. Previews of 270×600 px arrive first. |
+| The viewer replaces a preview with the full file | Passed. The shown file and its neighbors became 1080 px; the others stayed previews. |
+| An unpaired certificate is refused by the phone | Passed (`401 not_paired`). |
+| Byte ranges for video | Passed (`206 Partial Content`). |
+
+Known limits of this version:
+
+- A photo that is only a preview gives the preview when you drag it out, copy it or read its info, until the viewer shows it once.
+- Files deleted on the phone leave the cache at the next sync of that folder; changes do not arrive live yet.
+- A video downloads whole before it plays.
+
 ## Open questions
 
 - [ ] Distribution: Google Play, F-Droid, a direct APK, or more than one?
@@ -166,5 +189,6 @@ adb shell am start -a android.intent.action.VIEW -d '"glimpse://pair?…"' io.gi
 - [ ] Scope: browse only, or also automatic backup of new photos? This plan assumes browse only.
 - [ ] Pairing without a camera: a 6-digit code with a check that both screens show the same words?
 - [ ] More than one phone per Mac, and more than one Mac per phone?
-- [ ] Move USB with Android Open Accessory (AOA) from phase 5 to right after phase 2? Some home routers isolate Wi-Fi devices with no setting to change it, so Wi-Fi alone does not reach every user.
+- [x] Move USB with Android Open Accessory (AOA) to right after phase 2. Decided 2026-11-03: some home routers isolate Wi-Fi devices with no setting to change it.
+- [ ] Google Play and "All files access": file the declaration, or ship Files only in the F-Droid and APK builds?
 - [ ] App name on Google Play: "Glimpse" or "Glimpse for Android"? Check for name conflicts.
