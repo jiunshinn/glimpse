@@ -5,3 +5,15 @@
 *.xcodeproj
 xcuserdata/
 DerivedData/
+
+# Android
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+/android/.idea/
+/android/.kotlin/
+*.apk
+*.aab
+*.keystore
+*.jks
