@@ -111,6 +111,7 @@ final class PeerService: ObservableObject {
     func unpair(_ device: PairedDevice) {
         devices.removeAll { $0.fingerprint == device.fingerprint }
         save()
+        SharedFolders.shared.forget(device.fingerprint)
         DeviceLibrary.shared.reloadPhones()
         if devices.isEmpty, offer == nil { stopServer() }
     }
@@ -195,14 +196,15 @@ final class PeerService: ObservableObject {
                                            name: request.jsonBody?["name"] as? String)
                 return .json(200, ["id": identity?.deviceID ?? ""])
             default:
-                return await shared(request)
+                return await shared(request, for: client.fingerprint)
             }
         }
     }
 
     /// The folders shared with phones. The file work runs off the main thread.
-    private func shared(_ request: HTTPRequest) async -> HTTPResponse {
-        let roots = SharedFolders.shared.folders
+    private func shared(_ request: HTTPRequest, for fingerprint: String) async -> HTTPResponse {
+        // Each phone sees only the folders shared with it.
+        let roots = SharedFolders.shared.folders(for: fingerprint)
         let path = request.path
         guard request.method == "GET" else {
             return .error(405, "method_not_allowed", "Only GET is served for shared folders.")

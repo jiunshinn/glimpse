@@ -143,6 +143,21 @@ struct SidebarView: View {
 
     // MARK: - Rows
 
+    /// Share with Phone ▸ All Phones, then one checkable row per paired phone.
+    private func shareMenu(_ url: URL, phones: [PairedDevice]) -> some View {
+        let sharing = SharedFolders.shared
+        let all = phones.map(\.fingerprint)
+        return Menu(sharing.isShared(url) ? "Shared with Phones" : "Share with Phone") {
+            Toggle("All Phones", isOn: Binding(get: { sharing.isSharedWithAllPhones(url) },
+                                               set: { _ in sharing.toggleAllPhones(url) }))
+            Divider()
+            ForEach(phones) { phone in
+                Toggle(phone.name, isOn: Binding(get: { sharing.isShared(url, with: phone.fingerprint) },
+                                                 set: { _ in sharing.togglePhone(url, fingerprint: phone.fingerprint, allPaired: all) }))
+            }
+        }
+    }
+
     private func folderLabel(_ folder: WorkspaceFolder) -> some View {
         let unreadable = workspace.unreadableFolders.contains(folder.url)
         let newCount = workspace.newCount(in: folder.url)
@@ -182,11 +197,10 @@ struct SidebarView: View {
             workspace.setPinned(!folder.isPinned, for: folder.url)
         }
         Button("Remove from Workspace") { workspace.removeFolder(folder.url) }
-        if !PeerService.shared.devices.isEmpty {
+        let phones = PeerService.shared.devices.filter { $0.platform == "android" }
+        if !phones.isEmpty {
             Divider()
-            Button(SharedFolders.shared.isShared(folder.url) ? "Stop Sharing with Phone" : "Share with Phone") {
-                SharedFolders.shared.toggle(folder.url)
-            }
+            shareMenu(folder.url, phones: phones)
         }
     }
 

@@ -8,8 +8,32 @@ struct SharedFolder: Codable, Identifiable, Equatable {
     /// Short and stable, so a phone can keep its place across launches.
     var id: String
     var path: String
+    /// Shared with every paired phone, also with phones that pair later.
+    var allPhones = true
+    /// The certificate fingerprints of the phones it is shared with, when `allPhones` is false.
+    var phones: [String] = []
     var url: URL { URL(fileURLWithPath: path, isDirectory: true) }
     var name: String { FileManager.default.displayName(atPath: path) }
+
+    func isShared(with fingerprint: String) -> Bool { allPhones || phones.contains(fingerprint) }
+
+    private enum CodingKeys: String, CodingKey { case id, path, allPhones, phones }
+
+    init(id: String, path: String, allPhones: Bool = true, phones: [String] = []) {
+        self.id = id
+        self.path = path
+        self.allPhones = allPhones
+        self.phones = phones
+    }
+
+    /// A folder from before sharing per phone has no list: it stays shared with all phones.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        path = try container.decode(String.self, forKey: .path)
+        allPhones = try container.decodeIfPresent(Bool.self, forKey: .allPhones) ?? true
+        phones = try container.decodeIfPresent([String].self, forKey: .phones) ?? []
+    }
 }
 
 /// The folders the user shares with paired phones (**Share with Phone** in the sidebar).
@@ -29,17 +53,69 @@ final class SharedFolders {
         }
     }
 
-    func isShared(_ url: URL) -> Bool {
-        folders.contains { $0.path == url.standardizedFileURL.path }
+    /// The folders that one phone can browse.
+    func folders(for fingerprint: String) -> [SharedFolder] {
+        folders.filter { $0.isShared(with: fingerprint) }
     }
 
-    func toggle(_ url: URL) {
+    private func folder(_ url: URL) -> SharedFolder? {
+        folders.first { $0.path == url.standardizedFileURL.path }
+    }
+
+    func isShared(_ url: URL) -> Bool { folder(url) != nil }
+
+    func isSharedWithAllPhones(_ url: URL) -> Bool { folder(url)?.allPhones == true }
+
+    func isShared(_ url: URL, with fingerprint: String) -> Bool { folder(url)?.isShared(with: fingerprint) == true }
+
+    /// "All Phones" on: every phone, also later ones. Off: the folder is not shared any more.
+    func toggleAllPhones(_ url: URL) {
+        if isSharedWithAllPhones(url) {
+            update(url) { _ in nil }
+        } else {
+            update(url) { folder in
+                folder.allPhones = true
+                folder.phones = []
+                return folder
+            }
+        }
+    }
+
+    /// Shares the folder with one more phone, or stops sharing it with that phone.
+    /// When no phone is left, the folder is not shared any more.
+    func togglePhone(_ url: URL, fingerprint: String, allPaired: [String]) {
+        update(url) { folder in
+            var phones = folder.allPhones ? allPaired : folder.phones
+            if phones.contains(fingerprint) { phones.removeAll { $0 == fingerprint } } else { phones.append(fingerprint) }
+            guard !phones.isEmpty else { return nil }
+            folder.allPhones = false
+            folder.phones = phones
+            return folder
+        }
+    }
+
+    /// A phone that is unpaired leaves every list.
+    func forget(_ fingerprint: String) {
+        for index in folders.indices.reversed() where !folders[index].allPhones {
+            folders[index].phones.removeAll { $0 == fingerprint }
+            if folders[index].phones.isEmpty { folders.remove(at: index) }
+        }
+        save()
+    }
+
+    /// Changes the folder of `url` (a new one starts shared with no phone). Nil removes it.
+    private func update(_ url: URL, _ change: (inout SharedFolder) -> SharedFolder?) {
         let path = url.standardizedFileURL.path
         if let index = folders.firstIndex(where: { $0.path == path }) {
-            folders.remove(at: index)
+            if let changed = change(&folders[index]) { folders[index] = changed } else { folders.remove(at: index) }
         } else {
-            folders.append(SharedFolder(id: "s" + Data.random(count: 6).base64URLEncoded, path: path))
+            var folder = SharedFolder(id: "s" + Data.random(count: 6).base64URLEncoded, path: path, allPhones: false)
+            if let changed = change(&folder) { folders.append(changed) }
         }
+        save()
+    }
+
+    private func save() {
         try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? JSONEncoder().encode(folders).write(to: file, options: .atomic)
     }
