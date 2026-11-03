@@ -67,7 +67,7 @@ final class DeviceLibrary {
     @ObservationIgnored private var clients: [String: PhoneClient] = [:]
     @ObservationIgnored private var syncs: [DeviceLocation: Task<Void, Never>] = [:]
     @ObservationIgnored private var remote: [String: RemoteFile] = [:]
-    @ObservationIgnored private var fullDownloads: Set<String> = []
+    @ObservationIgnored private var fullDownloads: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var refreshedAt: [String: Date] = [:]
 
@@ -80,9 +80,17 @@ final class DeviceLibrary {
         var created: Date?
     }
 
+    /// The folder of all phone caches.
+    nonisolated static let cacheRoot = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Glimpse/Devices", isDirectory: true)
+
+    /// True for a file or folder in a phone cache. It works on any thread.
+    nonisolated static func isCacheItem(_ url: URL) -> Bool {
+        url.standardizedFileURL.path.hasPrefix(cacheRoot.standardizedFileURL.path + "/")
+    }
+
     private init() {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        root = caches.appendingPathComponent("Glimpse/Devices", isDirectory: true)
+        root = Self.cacheRoot
         timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in
             MainActor.assumeIsolated { DeviceLibrary.shared.clock = Date() }
         }
@@ -202,7 +210,7 @@ final class DeviceLibrary {
     }
 
     func isCache(_ url: URL) -> Bool {
-        url.standardizedFileURL.path.hasPrefix(root.standardizedFileURL.path + "/")
+        Self.isCacheItem(url)
     }
 
     func title(for location: DeviceLocation) -> String {
@@ -232,18 +240,31 @@ final class DeviceLibrary {
 
     // MARK: - Full files
 
-    /// The viewer shows these files: replace their previews with the full files.
+    /// True if the file is still a small preview of a phone photo.
+    func isPreview(_ url: URL) -> Bool {
+        guard isCache(url) else { return false }
+        let file = remote[url.standardizedFileURL.path] ?? loadManifestEntry(for: url)
+        return file.map { !$0.isFull } ?? false
+    }
+
+    /// The viewer shows these files, or a drag carries them: replace their previews with the full files.
     func wantFull(_ urls: [URL]) {
         for url in urls where isCache(url) {
             let key = url.standardizedFileURL.path
             guard let file = remote[key] ?? loadManifestEntry(for: url), !file.isFull,
-                  !fullDownloads.contains(key) else { continue }
-            fullDownloads.insert(key)
-            Task {
+                  fullDownloads[key] == nil else { continue }
+            fullDownloads[key] = Task {
                 await downloadFull(file, to: url)
-                fullDownloads.remove(key)
+                fullDownloads[key] = nil
             }
         }
+    }
+
+    /// Returns when the full files are in place, or when their downloads failed.
+    func ensureFull(_ urls: [URL]) async {
+        wantFull(urls)
+        let tasks = urls.compactMap { fullDownloads[$0.standardizedFileURL.path] }
+        for task in tasks { await task.value }
     }
 
     private func downloadFull(_ file: RemoteFile, to url: URL) async {

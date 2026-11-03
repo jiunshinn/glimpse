@@ -378,9 +378,24 @@ final class ViewerModel {
     func transfer(_ urls: [URL], into folder: URL, undoManager: UndoManager? = nil) -> Bool {
         let files = urls.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == false }
         guard !files.isEmpty else { return false }
+        // A phone photo that is still a preview: copy it when its full file is here.
+        let library = DeviceLibrary.shared
+        if files.contains(where: library.isPreview) {
+            showToast("Getting the full files from the phone…", symbol: "arrow.down.circle")
+            let undo = undoManager ?? canvas?.window?.undoManager
+            Task { [weak self] in
+                await library.ensureFull(files)
+                self?.finishTransfer(files, into: folder, undoManager: undo)
+            }
+            return true
+        }
+        return finishTransfer(files, into: folder, undoManager: undoManager ?? canvas?.window?.undoManager)
+    }
+
+    @discardableResult
+    private func finishTransfer(_ files: [URL], into folder: URL, undoManager: UndoManager?) -> Bool {
         let mode = FileMover.mode(for: files, into: folder)
-        let result = FileMover.transfer(files, into: folder, mode: mode,
-                                        undoManager: undoManager ?? canvas?.window?.undoManager)
+        let result = FileMover.transfer(files, into: folder, mode: mode, undoManager: undoManager)
         let name = FileManager.default.displayName(atPath: folder.path)
         if result.failed > 0 {
             let verb = mode == .move ? "move" : "copy"
@@ -914,6 +929,20 @@ final class ViewerModel {
 
     func copyCurrent() {
         guard let item = current else { return }
+        // A phone photo that is still a preview: copy it when its full file is here.
+        if DeviceLibrary.shared.isPreview(item.url) {
+            showToast("Getting the full photo from the phone…", symbol: "arrow.down.circle")
+            Task { [weak self] in
+                await DeviceLibrary.shared.ensureFull([item.url])
+                guard let self, self.current?.url == item.url else { return }
+                if DeviceLibrary.shared.isPreview(item.url) {
+                    self.showToast("Couldn’t get the full photo from the phone", symbol: "exclamationmark.triangle")
+                } else {
+                    self.copyCurrent()
+                }
+            }
+            return
+        }
         if item.kind == .image {
             PasteboardWriter.copyImage(at: item.url)
         } else {
