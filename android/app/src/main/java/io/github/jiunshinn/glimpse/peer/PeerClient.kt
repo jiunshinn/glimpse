@@ -8,6 +8,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
+import java.net.NoRouteToHostException
 import java.net.Socket
 import java.security.Principal
 import java.security.PrivateKey
@@ -101,7 +102,12 @@ class PeerClient(
         } catch (e: SSLHandshakeException) {
             throw PeerException("wrong_mac", "The Mac's certificate does not match the paired Mac.", e)
         } catch (e: IOException) {
-            throw PeerException("unreachable", e.message ?: "The Mac is not reachable.", e)
+            // OkHttp wraps the socket error. "No route to host" means that nothing on this network answers at the
+            // address: the Mac sleeps, or the router stops Wi-Fi devices from talking to each other.
+            val noRoute = generateSequence<Throwable>(e) { it.cause }.any {
+                it is NoRouteToHostException || it.message.orEmpty().contains("EHOSTUNREACH")
+            }
+            throw PeerException(if (noRoute) "no_route" else "unreachable", e.message ?: "The Mac is not reachable.", e)
         }
     }
 }

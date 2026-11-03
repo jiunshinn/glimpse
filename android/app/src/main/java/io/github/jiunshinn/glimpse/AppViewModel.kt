@@ -163,7 +163,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             ?: Build.MODEL
 
     private fun message(e: PeerException): String = when (e.code) {
-        "unreachable" -> "Glimpse could not reach the Mac. Make sure the phone and the Mac use the same Wi-Fi network."
+        "unreachable" -> "Glimpse could not reach the Mac. Make sure Glimpse is open on the Mac, and that the phone and the Mac use the same Wi-Fi network."
+        "no_route" -> "The phone cannot see the Mac on this Wi-Fi. The Mac may be asleep, or the router may stop Wi-Fi devices from talking to each other. " +
+            "If the Mac is awake, turn on this phone's hotspot, connect the Mac to it, and scan a new code."
         "pairing_closed" -> "The code expired. On the Mac, make a new code and scan it again."
         "bad_code" -> "The code did not work. Scan the code on the Mac again."
         "wrong_mac" -> "The Mac at this address is not the Mac in the code. Scan the code again."
