@@ -1,6 +1,6 @@
 # Android companion: plan
 
-Status (2026-11-03): phase 0 (pairing) and phase 2 (the Mac browses the phone's albums and folders) are built and tested on a Galaxy S21 with Android 15. See [Spike results](#spike-results) and [Phase 2 results](#phase-2-results). USB (AOA) is next.
+Status (2026-11-03): phase 0 (pairing) and phase 2 (the Mac browses the phone's albums and folders) are built and tested on a Galaxy S21 with Android 15. See [Spike results](#spike-results) and [Phase 2 results](#phase-2-results). Phase 3 (USB without developer mode) works too; see [Phase 3 results](#phase-3-results).
 
 **Goal:** Let a normal user browse the photos on their Android phone in Glimpse on the Mac, and browse the Mac's shared folders on the phone. The user must not turn on developer mode or install a driver.
 
@@ -125,7 +125,7 @@ flowchart LR
 | 0. Spike | Two test apps find each other with Bonjour, pair with a QR code and make a mutual TLS request. No product UI. | A phone and a Mac pair, reconnect after a restart, and refuse an unpaired device. |
 | 1. Monorepo setup | Add `android/` and `protocol/`, CI per platform. See [monorepo.md](monorepo.md). | Both apps build in CI from one repository. |
 | 2. Mac browses the phone | Devices sidebar, albums and folders, previews, viewer, drag to copy. Read-only. **Done.** | A user pairs and browses an album and a folder with the arrow keys. |
-| 3. USB without developer mode | Android Open Accessory (AOA): the Mac (`IOUSBHost`) switches the phone to accessory mode, and the same API runs over the USB link. Moved here because some home routers isolate Wi-Fi devices. | A phone on a router that isolates devices browses over a cable, with no developer mode. |
+| 3. USB without developer mode | Android Open Accessory (AOA): the Mac (`IOUSBHost`) switches the phone to accessory mode, and the same API runs over the USB link. Moved here because some home routers isolate Wi-Fi devices. **Done.** | A phone on a router that isolates devices browses over a cable, with no developer mode. |
 | 4. Phone browses the Mac | **Share with Phone**, the Mac tab, the swipe viewer, save to phone. | A user opens a shared Mac folder on the phone and saves a photo. |
 | 5. Transfers both ways | Share sheet target, upload to a Mac folder or board, progress UI. | A photo goes from Google Photos to a Glimpse board in two taps. |
 | 6. Optional | Delete and move on the phone, video streaming, an event stream for live updates. | To be decided. |
@@ -181,6 +181,30 @@ Known limits of this version:
 - A photo that is only a preview gives the preview when you drag it out, copy it or read its info, until the viewer shows it once.
 - Files deleted on the phone leave the cache at the next sync of that folder; changes do not arrive live yet.
 - A video downloads whole before it plays.
+
+## Phase 3 results
+
+USB without developer mode, tested on 2026-11-03 with the Galaxy S21 (Android 15).
+
+How it works:
+
+1. Glimpse on the Mac watches USB (`UsbLink.swift`). When an Android phone is plugged in and no paired phone is online over Wi-Fi, it sends the AOA requests (manufacturer "Glimpse", model "Glimpse for Mac") and the phone switches to accessory mode. A phone that is plugged in at launch gets 35 seconds to connect over Wi-Fi first.
+2. Android asks "Open Glimpse?" (with "Always open"). The app opens the accessory in `SharingService` (`UsbLink.kt`) and says who it is.
+3. The link carries frames (stream id, type, length, payload). Each connection to a local port on the Mac becomes a stream to the phone's own HTTPS server. TLS, the pinned certificates and the API do not change.
+4. The sidebar shows a cable icon, and the cable comes before Wi-Fi while it is connected.
+
+| Check | Result |
+|---|---|
+| AOA support on the phone | Protocol version 2. macOS or adb holds the device, but a free interface sends the same requests. |
+| Switch, "Open Glimpse?", link open | Passed. The sidebar shows the cable icon. |
+| Albums through the cable | Passed, with TLS and the pinned certificates inside the link. |
+| A 10.8 MB video | 0.37 s, about 29 MB/s, file intact. |
+| 6 requests at the same time | Passed. |
+| The app reopens the link after an update, with the cable still plugged in | Passed. |
+
+Two bugs found and fixed on the way: the phone dropped a stream's first bytes when it connected the stream on another thread, and two start commands started two servers.
+
+Google Play: AOA is a public Android API with no special permission, so it is allowed. The manifest marks `android.hardware.usb.accessory` as not required, so Play does not hide the app on phones without it. A sandboxed Mac App Store build would need the `com.apple.security.device.usb` entitlement; a notarized direct download needs nothing extra.
 
 ## Open questions
 
