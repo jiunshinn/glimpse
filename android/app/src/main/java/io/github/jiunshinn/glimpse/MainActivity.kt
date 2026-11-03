@@ -31,6 +31,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         viewModel.onForeground()
+        SharingService.resumeIfOn(this)
     }
 
     override fun onStop() {

@@ -57,11 +57,14 @@ import io.github.jiunshinn.glimpse.AppViewModel
 import io.github.jiunshinn.glimpse.MacRow
 import io.github.jiunshinn.glimpse.MacStatus
 import io.github.jiunshinn.glimpse.Pairing
+import io.github.jiunshinn.glimpse.SharingService
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GlimpseApp(viewModel: AppViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val sharing by SharingService.running.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var scanning by rememberSaveable { mutableStateOf(false) }
     var enteringLink by rememberSaveable { mutableStateOf(false) }
 
@@ -93,6 +96,9 @@ fun GlimpseApp(viewModel: AppViewModel) {
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                item(key = "sharing") {
+                    SharingPanel(sharing) { on -> if (on) SharingService.start(context) else SharingService.stop(context) }
+                }
                 items(state.macs, key = { it.mac.fingerprint }) { row ->
                     MacCard(row, onUnpair = { viewModel.unpair(row.mac) }, onPairAgain = { scanning = true })
                 }
@@ -170,7 +176,7 @@ private fun MacCard(row: MacRow, onUnpair: () -> Unit, onPairAgain: () -> Unit) 
                     Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 val hint = when (row.status) {
-                    MacStatus.Connected -> "Shared folders will show here in a later version."
+                    MacStatus.Connected -> "Open Glimpse on the Mac to browse this phone. The Mac's shared folders will show here in a later version."
                     MacStatus.Unreachable -> "Open Glimpse on the Mac, and use the same Wi-Fi network as the Mac."
                     else -> null
                 }

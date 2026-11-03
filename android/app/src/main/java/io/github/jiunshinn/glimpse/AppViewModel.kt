@@ -125,6 +125,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         store.put(mac)
         setRow(MacRow(mac, MacStatus.Connected))
         setPairing(Pairing.Done(info.name))
+        // A new pair starts sharing at once, so the Mac can browse the phone.
+        SharingService.start(getApplication())
     }
 
     private suspend fun refresh(mac: PairedMac) {

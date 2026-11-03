@@ -82,6 +82,13 @@ class PeerClient(
         call(Request.Builder().url(url(host, port, "/v1/pair")).post(body).build())
     }
 
+    /** Tells the Mac where the phone's own server listens. The Mac takes the address from the connection. */
+    suspend fun hello(host: String, port: Int, serverPort: Int, phoneName: String) {
+        val body = JSONObject().put("port", serverPort).put("name", phoneName).toString()
+            .toRequestBody("application/json".toMediaType())
+        call(Request.Builder().url(url(host, port, "/v1/hello")).post(body).build())
+    }
+
     private fun url(host: String, port: Int, path: String): String {
         val literal = if (host.contains(':')) "[$host]" else host  // IPv6
         return "https://$literal:$port$path"
@@ -124,16 +131,17 @@ private class PinnedTrustManager(private val fingerprint: String) : X509TrustMan
     override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
 }
 
-/** Offers the Keystore key whenever the Mac asks for a client certificate. */
-private class DeviceKeyManager(
+/** Offers the Keystore key as the client certificate (phone to Mac) and as the server certificate (Mac to phone). */
+internal class DeviceKeyManager(
     private val key: PrivateKey,
     private val certificate: X509Certificate,
 ) : X509ExtendedKeyManager() {
     override fun getClientAliases(keyType: String?, issuers: Array<out Principal>?) = arrayOf(ALIAS)
     override fun chooseClientAlias(keyType: Array<out String>?, issuers: Array<out Principal>?, socket: Socket?) = ALIAS
     override fun chooseEngineClientAlias(keyType: Array<out String>?, issuers: Array<out Principal>?, engine: SSLEngine?) = ALIAS
-    override fun getServerAliases(keyType: String?, issuers: Array<out Principal>?): Array<String>? = null
-    override fun chooseServerAlias(keyType: String?, issuers: Array<out Principal>?, socket: Socket?): String? = null
+    override fun getServerAliases(keyType: String?, issuers: Array<out Principal>?) = arrayOf(ALIAS)
+    override fun chooseServerAlias(keyType: String?, issuers: Array<out Principal>?, socket: Socket?) = ALIAS
+    override fun chooseEngineServerAlias(keyType: String?, issuers: Array<out Principal>?, engine: SSLEngine?) = ALIAS
     override fun getCertificateChain(alias: String?) = arrayOf(certificate)
     override fun getPrivateKey(alias: String?) = key
 
