@@ -8,6 +8,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.hardware.usb.UsbAccessory
+import android.hardware.usb.UsbManager
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
@@ -22,6 +24,10 @@ import io.github.jiunshinn.glimpse.peer.PairedMacs
 import io.github.jiunshinn.glimpse.peer.PeerClient
 import io.github.jiunshinn.glimpse.peer.PhoneLibrary
 import io.github.jiunshinn.glimpse.peer.PhoneServer
+import io.github.jiunshinn.glimpse.peer.UsbLink
+import org.json.JSONObject
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,9 +46,14 @@ import kotlinx.coroutines.launch
 class SharingService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var server: PhoneServer? = null
+    /** Set at once, so a second start command does not start a second server. */
+    private var started = false
     private var registration: NsdManager.RegistrationListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
     private val found = mutableMapOf<String, FoundMac>()
+    private var usb: UsbLink? = null
+    private var usbFile: android.os.ParcelFileDescriptor? = null
+    private val serverReady = kotlinx.coroutines.CompletableDeferred<PhoneServer>()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -52,7 +63,9 @@ class SharingService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (server != null) return START_STICKY
+        intentAccessory(intent)?.let { accessory -> scope.launch { openUsb(accessory) } }
+        if (started) return START_STICKY
+        started = true
         val macs = PairedMacs(this)
         val names = macs.all().joinToString { it.name }
         startForeground(NOTIFICATION_ID, notification(names), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
@@ -64,6 +77,7 @@ class SharingService : Service() {
             val server = PhoneServer(identity, macs, PhoneLibrary(this@SharingService), name, BuildConfigVersion.name(this@SharingService))
             server.start()
             this@SharingService.server = server
+            serverReady.complete(server)
             Log.i(TAG, "Sharing on port ${server.port}")
             register(identity.fingerprint.take(16), name, server.port)
             launch { Discovery(this@SharingService).browse().collect { found[it.id] = it; sayHello(identity, macs, server.port, name) } }
@@ -77,11 +91,36 @@ class SharingService : Service() {
 
     override fun onDestroy() {
         _running.value = false
+        usb?.close()
         scope.cancel()
         server?.stop()
         registration?.let { runCatching { (getSystemService(NSD_SERVICE) as NsdManager).unregisterService(it) } }
         multicastLock?.release()
         super.onDestroy()
+    }
+
+    private fun intentAccessory(intent: Intent?): UsbAccessory? =
+        if (Build.VERSION.SDK_INT >= 33) intent?.getParcelableExtra(UsbManager.EXTRA_ACCESSORY, UsbAccessory::class.java)
+        else @Suppress("DEPRECATION") intent?.getParcelableExtra(UsbManager.EXTRA_ACCESSORY)
+
+    /** The Mac switched the phone to accessory mode: carry the Mac's connections over the cable. */
+    private suspend fun openUsb(accessory: UsbAccessory) {
+        val server = serverReady.await()
+        usb?.close()
+        val file = (getSystemService(USB_SERVICE) as UsbManager).openAccessory(accessory) ?: run {
+            Log.w(TAG, "Could not open the USB accessory")
+            return
+        }
+        usbFile = file
+        val identity = DeviceIdentity.loadOrCreate()
+        val hello = JSONObject().put("id", identity.fingerprint.take(16)).put("name", phoneName(this))
+        val link = UsbLink(FileInputStream(file.fileDescriptor), FileOutputStream(file.fileDescriptor), { server.port }, hello) {
+            runCatching { file.close() }
+            Log.i(TAG, "USB link ended")
+        }
+        usb = link
+        link.start()
+        Log.i(TAG, "USB link open")
     }
 
     private suspend fun sayHello(identity: DeviceIdentity, macs: PairedMacs, serverPort: Int, name: String) {
@@ -145,6 +184,12 @@ class SharingService : Service() {
         fun start(context: Context) {
             prefs(context).edit().putBoolean(KEY_ON, true).apply()
             context.startForegroundService(Intent(context, SharingService::class.java))
+        }
+
+        /** Starts sharing, and carries it over the USB accessory link too. */
+        fun startUsb(context: Context, accessory: UsbAccessory) {
+            prefs(context).edit().putBoolean(KEY_ON, true).apply()
+            context.startForegroundService(Intent(context, SharingService::class.java).putExtra(UsbManager.EXTRA_ACCESSORY, accessory))
         }
 
         fun stop(context: Context) {

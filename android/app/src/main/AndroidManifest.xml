@@ -22,6 +22,8 @@
 
     <!-- The camera only scans the pairing code. A phone without one can enter the link. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- A USB cable to the Mac (Android Open Accessory) works where Wi-Fi devices cannot reach each other. -->
+    <uses-feature android:name="android.hardware.usb.accessory" android:required="false" />
 
     <application
         android:allowBackup="false"
@@ -44,6 +46,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="glimpse" android:host="pair" />
             </intent-filter>
+            <!-- Glimpse on the Mac switched the phone to accessory mode. -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED"
+                android:resource="@xml/accessory_filter" />
         </activity>
         <service
             android:name=".SharingService"

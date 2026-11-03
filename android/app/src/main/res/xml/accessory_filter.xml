@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Glimpse on the Mac switches the phone to accessory mode with these strings (UsbLink.swift). -->
+<resources>
+    <usb-accessory manufacturer="Glimpse" model="Glimpse for Mac" />
+</resources>
