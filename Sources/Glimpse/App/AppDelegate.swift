@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         NSApp.activate()
         PeerService.shared.startIfPaired()
+        UsbAccessoryWatcher.shared.start()
         #if DEBUG
         applyDebugCommands()
         #endif

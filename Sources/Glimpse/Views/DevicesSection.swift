@@ -47,7 +47,7 @@ private struct PhoneRows: View {
                     hint(problem)
                 }
             } else {
-                hint("Not connected. On the phone, open Glimpse and turn on “Share with your Mac”.")
+                hint("Not connected. On the phone, open Glimpse and turn on “Share with your Mac”, or connect the phone with a USB cable.")
             }
         } label: {
             Label {
@@ -56,7 +56,10 @@ private struct PhoneRows: View {
                 Image(systemName: "smartphone")
                     .foregroundStyle(library.isOnline(phone) ? Color.accentColor : .secondary)
             }
-            .accessibilityValue(library.isOnline(phone) ? "Connected" : "Not connected")
+            .badge(phone.usbPort != nil ? Text(Image(systemName: "cable.connector")) : nil)
+            .help(phone.usbPort != nil ? "Connected with a USB cable" : library.isOnline(phone) ? "Connected over Wi-Fi" : "Not connected")
+            .accessibilityValue(phone.usbPort != nil ? "Connected with a USB cable"
+                                : library.isOnline(phone) ? "Connected over Wi-Fi" : "Not connected")
         }
     }
 

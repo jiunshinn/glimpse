@@ -36,6 +36,8 @@ struct Phone: Identifiable, Equatable {
     var host: String?
     var port: Int?
     var lastHello: Date?
+    /// The local port of the USB cable link, while the phone is connected by cable.
+    var usbPort: Int?
 }
 
 /// The phones' albums and folders on this Mac.
@@ -98,6 +100,7 @@ final class DeviceLibrary {
     }
 
     func isOnline(_ phone: Phone) -> Bool {
+        if phone.usbPort != nil { return true }
         guard let seen = phone.lastHello else { return false }
         return clock.timeIntervalSince(seen) < Self.onlineWindow || Date().timeIntervalSince(seen) < Self.onlineWindow
     }
@@ -123,7 +126,7 @@ final class DeviceLibrary {
         phones[index].port = port
         phones[index].lastHello = Date()
         clock = Date()
-        if moved {
+        if moved && phones[index].usbPort == nil {
             clients[phones[index].id]?.invalidate()
             clients[phones[index].id] = nil
         }
@@ -132,6 +135,23 @@ final class DeviceLibrary {
         if !wasOnline || moved || stale {
             refresh(phones[index].id)
         }
+    }
+
+    /// The phone opened a USB cable link. The cable comes before Wi-Fi while it is connected.
+    func usbAttached(_ deviceID: String, port: Int) {
+        reloadPhones()
+        guard let index = phones.firstIndex(where: { $0.id == deviceID }) else { return }
+        phones[index].usbPort = port
+        clients[deviceID]?.invalidate()
+        clients[deviceID] = nil
+        refresh(deviceID)
+    }
+
+    func usbDetached(_ deviceID: String) {
+        guard let index = phones.firstIndex(where: { $0.id == deviceID }) else { return }
+        phones[index].usbPort = nil
+        clients[deviceID]?.invalidate()
+        clients[deviceID] = nil
     }
 
     // MARK: - Albums and folders
@@ -445,7 +465,8 @@ final class DeviceLibrary {
 
     private func client(for deviceID: String) -> PhoneClient? {
         if let client = clients[deviceID] { return client }
-        guard let phone = phones.first(where: { $0.id == deviceID }), let host = phone.host, let port = phone.port,
+        guard let phone = phones.first(where: { $0.id == deviceID }),
+              let host = phone.usbPort != nil ? "127.0.0.1" : phone.host, let port = phone.usbPort ?? phone.port,
               let identity = PeerService.shared.identity else {
             problems[deviceID] = "Open Glimpse on the phone and turn on Share with your Mac."
             return nil
