@@ -24,7 +24,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class MacStatus { Searching, Connected, Unreachable, UnpairedByMac }
+enum class MacStatus { Searching, Connected, ConnectedByCable, Unreachable, UnpairedByMac }
 
 data class MacRow(val mac: PairedMac, val status: MacStatus)
 
@@ -57,6 +57,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun onForeground() {
         if (foreground != null) return
         foreground = viewModelScope.launch {
+            launch {
+                // The cable connects or ends: check the Macs again at once.
+                SharingService.usbMac.collect { store.all().forEach { launch { refresh(it) } } }
+            }
             launch {
                 discovery.browse().collect { mac ->
                     found[mac.id] = mac
@@ -131,13 +135,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun refresh(mac: PairedMac) {
         val client = runCatching { client(mac.fingerprint) }.getOrNull() ?: return
-        val addresses = listOfNotNull(found[mac.id]?.let { it.host to it.port }, mac.host to mac.port).distinct()
+        val cable = SharingService.usbMac.value?.takeIf { it.id == mac.id }?.let { "127.0.0.1" to it.port }
+        val addresses = listOfNotNull(cable, found[mac.id]?.let { it.host to it.port }, mac.host to mac.port).distinct()
         for ((host, port) in addresses) {
             try {
                 val info = client.info(host, port)
-                val updated = mac.copy(name = info.name, host = host, port = port)
+                val byCable = cable != null && host == cable.first && port == cable.second
+                // The cable's local address is not the Mac's address on the network: keep the stored one.
+                val updated = if (byCable) mac.copy(name = info.name) else mac.copy(name = info.name, host = host, port = port)
                 if (updated != mac) store.put(updated)
-                setRow(MacRow(updated, if (info.paired) MacStatus.Connected else MacStatus.UnpairedByMac))
+                val status = when {
+                    !info.paired -> MacStatus.UnpairedByMac
+                    byCable -> MacStatus.ConnectedByCable
+                    else -> MacStatus.Connected
+                }
+                setRow(MacRow(updated, status))
                 return
             } catch (_: PeerException) {
                 // Try the next address.

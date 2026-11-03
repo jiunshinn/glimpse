@@ -114,8 +114,14 @@ class SharingService : Service() {
         usbFile = file
         val identity = DeviceIdentity.loadOrCreate()
         val hello = JSONObject().put("id", identity.fingerprint.take(16)).put("name", phoneName(this))
-        val link = UsbLink(FileInputStream(file.fileDescriptor), FileOutputStream(file.fileDescriptor), { server.port }, hello) {
+        val link = UsbLink(FileInputStream(file.fileDescriptor), FileOutputStream(file.fileDescriptor), { server.port }, hello,
+            onMac = { macId, port ->
+                Log.i(TAG, "USB link to Mac $macId, local port $port")
+                _usbMac.value = UsbMac(macId, port)
+            },
+        ) {
             runCatching { file.close() }
+            _usbMac.value = null
             Log.i(TAG, "USB link ended")
         }
         usb = link
@@ -180,6 +186,11 @@ class SharingService : Service() {
 
         private val _running = MutableStateFlow(false)
         val running: StateFlow<Boolean> = _running
+
+        /** The Mac at the other end of the USB cable, and the local port that reaches it. */
+        data class UsbMac(val id: String, val port: Int)
+        private val _usbMac = MutableStateFlow<UsbMac?>(null)
+        val usbMac: StateFlow<UsbMac?> = _usbMac
 
         fun start(context: Context) {
             prefs(context).edit().putBoolean(KEY_ON, true).apply()

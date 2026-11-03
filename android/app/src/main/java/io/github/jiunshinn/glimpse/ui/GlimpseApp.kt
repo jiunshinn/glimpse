@@ -161,6 +161,7 @@ private fun MacCard(row: MacRow, onUnpair: () -> Unit, onPairAgain: () -> Unit) 
     val (label, color) = when (row.status) {
         MacStatus.Searching -> "Looking for the Mac…" to MaterialTheme.colorScheme.outline
         MacStatus.Connected -> "Connected" to Color(0xFF2E9E5B)
+        MacStatus.ConnectedByCable -> "Connected with USB cable" to Color(0xFF2E9E5B)
         MacStatus.Unreachable -> "Not reachable" to MaterialTheme.colorScheme.outline
         MacStatus.UnpairedByMac -> "The Mac removed this phone. Pair again." to MaterialTheme.colorScheme.error
     }
@@ -176,7 +177,8 @@ private fun MacCard(row: MacRow, onUnpair: () -> Unit, onPairAgain: () -> Unit) 
                     Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 val hint = when (row.status) {
-                    MacStatus.Connected -> "Open Glimpse on the Mac to browse this phone. The Mac's shared folders will show here in a later version."
+                    MacStatus.Connected, MacStatus.ConnectedByCable ->
+                        "Open Glimpse on the Mac to browse this phone. The Mac's shared folders will show here in a later version."
                     MacStatus.Unreachable -> "Open Glimpse on the Mac, and use the same Wi-Fi network as the Mac."
                     else -> null
                 }
