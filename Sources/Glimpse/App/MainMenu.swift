@@ -58,6 +58,7 @@ enum MainMenu {
         let menu = NSMenu(title: "File")
         menu.addItem(item("New Tab", #selector(ViewerWindowController.newWindowForTab(_:)), "t"))
         menu.addItem(item("Open…", #selector(AppDelegate.openDocument(_:)), "o"))
+        menu.addItem(item("Connect Phone…", #selector(AppDelegate.connectPhone(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Close Tab", #selector(ViewerWindowController.closeTab(_:)), "w"))
         menu.addItem(item("Close Window", #selector(ViewerWindowController.closeWindowAndTabs(_:)), "w", [.command, .shift]))
