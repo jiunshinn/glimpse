@@ -14,6 +14,8 @@ final class PhoneClient: NSObject, URLSessionDelegate, @unchecked Sendable {
     private let fingerprint: String
     private let identity: SecIdentity
     private var session: URLSession!
+    private let lock = NSLock()
+    private var retired = false
 
     init?(host: String, port: Int, fingerprint: String, identity: SecIdentity) {
         var components = URLComponents()
@@ -33,8 +35,12 @@ final class PhoneClient: NSObject, URLSessionDelegate, @unchecked Sendable {
         session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     }
 
+    /// Stops new requests. The requests that run now can finish; then the session closes.
+    /// A session must not get a new task after it is invalidated, or Foundation raises an exception.
     func invalidate() {
-        session.invalidateAndCancel()
+        lock.withLock { retired = true }
+        let session = session!
+        DispatchQueue.global().asyncAfter(deadline: .now() + 60) { session.finishTasksAndInvalidate() }
     }
 
     func json(_ path: String, query: [String: String] = [:]) async throws -> [String: Any] {
@@ -71,6 +77,9 @@ final class PhoneClient: NSObject, URLSessionDelegate, @unchecked Sendable {
     }
 
     private func perform<T>(_ body: () async throws -> T) async throws -> T {
+        if lock.withLock({ retired }) {
+            throw PhoneError(code: "unreachable", message: "The connection to the phone changed. Try again.")
+        }
         do {
             return try await body()
         } catch let error as URLError {

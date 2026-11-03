@@ -148,6 +148,7 @@ final class UsbAccessoryWatcher: @unchecked Sendable {
 }
 
 /// One accessory link: the bulk pipes to the phone, and a local port whose connections go through them.
+/// The Mac opens streams with odd ids to the phone's server; the phone opens streams with even ids to the Mac's server.
 /// The frame format must stay the same as `UsbLink.kt` on the phone.
 final class UsbLink: @unchecked Sendable {
     static let header = 9
@@ -210,6 +211,11 @@ final class UsbLink: @unchecked Sendable {
         }
         listener.start(queue: queue)
         read()
+        // Tell the phone which Mac this is, so the phone can reach the Mac's server through the cable too.
+        let macID = DispatchQueue.main.sync { MainActor.assumeIsolated { PeerService.shared.deviceID } }
+        if let macID, let hello = try? JSONSerialization.data(withJSONObject: ["id": macID]) {
+            send(0, .hello, hello)
+        }
     }
 
     func close() {
@@ -246,6 +252,22 @@ final class UsbLink: @unchecked Sendable {
                 self?.endStream(stream, notify: true)
             default:
                 break
+            }
+        }
+        connection.start(queue: queue)
+    }
+
+    /// The phone opened a stream: connect it to the Mac's own server.
+    private func openFromPhone(_ stream: UInt32) {
+        let port = DispatchQueue.main.sync { MainActor.assumeIsolated { PeerService.shared.listeningPort } }
+        guard let port, let endpoint = NWEndpoint.Port(rawValue: port) else { return send(stream, .close) }
+        let connection = NWConnection(host: .ipv4(.loopback), port: endpoint, using: .tcp)
+        streams[stream] = connection
+        connection.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .ready: self?.pump(stream, connection)
+            case .failed, .cancelled: self?.endStream(stream, notify: true)
+            default: break
             }
         }
         connection.start(queue: queue)
@@ -309,7 +331,9 @@ final class UsbLink: @unchecked Sendable {
             streams[stream]?.send(content: payload, completion: .contentProcessed { _ in })
         case .close:
             endStream(stream, notify: false)
-        case .open, .noop, nil:
+        case .open:
+            openFromPhone(stream)
+        case .noop, nil:
             break
         }
     }

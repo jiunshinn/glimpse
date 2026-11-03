@@ -47,6 +47,12 @@ final class PeerService: ObservableObject {
 
     var deviceID: String? { identity?.deviceID }
 
+    /// The port of the peer server while it runs.
+    var listeningPort: UInt16? {
+        if case .ready(let port) = serverState { return port }
+        return nil
+    }
+
     /// The Mac's TLS identity. The Mac also shows it as a client when it connects to a phone.
     var identity: PeerIdentity? {
         if storedIdentity == nil { storedIdentity = try? PeerIdentity.loadOrCreate(in: directory) }
@@ -180,6 +186,8 @@ final class PeerService: ObservableObject {
                 guard let port = request.jsonBody?["port"] as? Int, (1...65535).contains(port), let host = client.host else {
                     return .error(400, "bad_request", "The body needs the port of the phone's server.")
                 }
+                // A hello through the USB cable comes from this Mac's own address. The cable has its own route.
+                if host == "127.0.0.1" || host == "::1" { return .json(200, ["id": identity?.deviceID ?? ""]) }
                 DeviceLibrary.shared.hello(fingerprint: client.fingerprint, host: host, port: port,
                                            name: request.jsonBody?["name"] as? String)
                 return .json(200, ["id": identity?.deviceID ?? ""])
