@@ -64,7 +64,7 @@ private struct PairingView: View {
                 .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 4) {
                 Text("1. Install Glimpse for Android on the phone.")
-                Text("2. Open it and tap **Pair with Mac**.")
+                Text("2. Open it and tap **Scan code**.")
                 Text("3. Scan this code. Both devices must use the same Wi-Fi.")
             }
             .padding(.top, 4)
