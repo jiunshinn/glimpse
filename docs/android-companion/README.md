@@ -1,6 +1,6 @@
 # Android companion: plan
 
-Status: phase 0 (spike) is built and tested with the Android emulator (2026-11-03). A test on a real phone is still open. See [Spike results](#spike-results).
+Status: phase 0 (spike) is built and tested with the Android emulator and a real phone, a Galaxy S21 with Android 15 (2026-11-03). See [Spike results](#spike-results).
 
 **Goal:** Let a normal user browse the photos on their Android phone in Glimpse on the Mac, and browse the Mac's shared folders on the phone. The user must not turn on developer mode or install a driver.
 
@@ -99,7 +99,7 @@ flowchart LR
 
 | Risk | Effect | Plan |
 | --- | --- | --- |
-| Not on the same Wi-Fi, or the Wi-Fi blocks device-to-device traffic (guest, office, hotel networks) | The devices cannot find each other. | Show a clear "not on the same network" message. Later: the phone's hotspot, or USB (phase 5). |
+| Not on the same Wi-Fi, or the Wi-Fi blocks device-to-device traffic (guest, office, hotel networks, and some home routers such as the LG U+ GAPM-7200) | The devices cannot find each other. | "No route to host" gets its own message with a hotspot hint (done). USB without developer mode (AOA) is the real fallback; see the open questions. |
 | Android stops background apps | The connection drops when the app is in the background. | A foreground service with a visible notification while connected. |
 | Permission prompts | The user can deny them, and the feature stops working. | Explain each prompt first. Show a fix button when a permission is missing. |
 | Changes to phone photos | Android asks the user on the phone to confirm each delete or move of another app's photo. | The first version is read-only for phone photos. |
@@ -133,12 +133,13 @@ Built on branch `feature/android-companion`, 2026-11-03.
 
 | Done-when item | Result |
 | --- | --- |
-| A phone and a Mac pair | Passed (emulator, Android 14). The pairing link went in with `adb shell am start -d`. |
+| A phone and a Mac pair | Passed. Emulator (Android 14): link sent with `adb shell am start -d`. Galaxy S21 (Android 15): QR code scanned with the in-app camera, over Wi-Fi. |
 | They reconnect after a restart | Passed. Both apps restarted, and the phone showed "Connected" again. |
 | An unpaired device is refused | Passed. No client certificate: TLS fails. An unpaired certificate: `401 not_paired`. A used or wrong code: `403 pairing_closed` or `401 bad_code`. |
 | The Mac removes a phone | Passed. The phone shows "The Mac removed this phone. Pair again." |
-| Bonjour discovery | The Mac advertises `_glimpse._tcp` with its TXT record (checked with `dns-sd`). The emulator cannot see mDNS on the Mac's network, so a real phone must test it. |
-| QR scan with the camera | Not tested yet. It needs a real phone. |
+| Bonjour discovery | Passed on the Galaxy S21. The Mac restarted on another port (49220, because 53817 was taken). The address in the QR code failed, but the phone found the Mac with `NsdManager`, connected and saved the new port. |
+| QR scan with the camera | Passed on the Galaxy S21 (CameraX and ZXing). |
+| Home router that isolates Wi-Fi devices | Found on the LG U+ GAPM-7200: the Mac and the phone both reach the router, but not each other ("No route to host"). The router has no setting to turn this off. Pairing worked on a phone hotspot instead. The phone now shows a message for this case. |
 
 Decisions from the spike:
 
@@ -165,4 +166,5 @@ adb shell am start -a android.intent.action.VIEW -d '"glimpse://pair?…"' io.gi
 - [ ] Scope: browse only, or also automatic backup of new photos? This plan assumes browse only.
 - [ ] Pairing without a camera: a 6-digit code with a check that both screens show the same words?
 - [ ] More than one phone per Mac, and more than one Mac per phone?
+- [ ] Move USB with Android Open Accessory (AOA) from phase 5 to right after phase 2? Some home routers isolate Wi-Fi devices with no setting to change it, so Wi-Fi alone does not reach every user.
 - [ ] App name on Google Play: "Glimpse" or "Glimpse for Android"? Check for name conflicts.

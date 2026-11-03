@@ -142,6 +142,6 @@ Rules:
 
 - [x] Make a self-signed certificate on the Mac: a small DER writer (`PeerIdentity.swift`) and `SecIdentityCreate`. No library.
 - [x] `NWListener` with mutual TLS works with OkHttp, a pinning `X509TrustManager` and a client key in Android Keystore.
-- [ ] Does `NsdManager` find the Mac reliably on Android 10 to 16? Do some phones need a multicast lock? (Needs a real phone.)
+- [x] `NsdManager` finds the Mac on a Galaxy S21 (Android 15) without a multicast lock. Test more phones and Android versions later.
 - [ ] Which Kotlin server for phase 2, when the phone serves its albums: Ktor CIO or a small custom server?
 - [ ] Does the Android foreground service type `connectedDevice` fit this use, and which permission does it need?
