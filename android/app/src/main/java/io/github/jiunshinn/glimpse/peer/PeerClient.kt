@@ -43,6 +43,23 @@ data class PeerInfo(
     }
 }
 
+/** A shared folder on the Mac. */
+data class RemoteAlbum(val id: String, val name: String, val count: Int)
+
+/** A file or a subfolder in a shared folder on the Mac. */
+data class RemoteItem(
+    val id: String,
+    val name: String,
+    val kind: String,
+    val mime: String,
+    val size: Long,
+    /** For a folder: its path inside the shared folder. */
+    val path: String,
+    val count: Int,
+) {
+    val isFolder: Boolean get() = kind == "folder"
+}
+
 /** An API error with the `error` code of the peer protocol, or a network failure. */
 class PeerException(val code: String, message: String, cause: Throwable? = null) : IOException(message, cause)
 
@@ -80,6 +97,48 @@ class PeerClient(
             .toString()
             .toRequestBody("application/json".toMediaType())
         call(Request.Builder().url(url(host, port, "/v1/pair")).post(body).build())
+    }
+
+    suspend fun albums(host: String, port: Int): List<RemoteAlbum> {
+        val array = call(Request.Builder().url(url(host, port, "/v1/albums")).build()).optJSONArray("albums")
+        return List(array?.length() ?: 0) { index ->
+            val album = array!!.getJSONObject(index)
+            RemoteAlbum(album.getString("id"), album.getString("name"), album.optInt("count"))
+        }
+    }
+
+    suspend fun items(host: String, port: Int, albumId: String, path: String): List<RemoteItem> {
+        val query = "?path=" + java.net.URLEncoder.encode(path, "UTF-8").replace("+", "%20")
+        val array = call(Request.Builder().url(url(host, port, "/v1/albums/$albumId/items$query")).build()).optJSONArray("items")
+        return List(array?.length() ?: 0) { index ->
+            val item = array!!.getJSONObject(index)
+            RemoteItem(
+                id = item.optString("id"),
+                name = item.getString("name"),
+                kind = item.getString("kind"),
+                mime = item.optString("mime", "application/octet-stream"),
+                size = item.optLong("size"),
+                path = item.optString("path"),
+                count = item.optInt("count"),
+            )
+        }
+    }
+
+    /** The bytes of a small response, such as a JPEG preview. Null when the Mac has no preview. */
+    suspend fun bytes(host: String, port: Int, path: String): ByteArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            http.newCall(Request.Builder().url(url(host, port, path)).build()).execute().use { response ->
+                if (response.isSuccessful) response.body?.bytes() else null
+            }
+        }.getOrNull()
+    }
+
+    /** Copies a file from the Mac into [sink], in chunks. */
+    suspend fun download(host: String, port: Int, itemId: String, sink: java.io.OutputStream) = withContext(Dispatchers.IO) {
+        http.newCall(Request.Builder().url(url(host, port, "/v1/items/$itemId/content")).build()).execute().use { response ->
+            if (!response.isSuccessful) throw PeerException("http_${response.code}", "The Mac answered ${response.code}.")
+            response.body!!.byteStream().use { it.copyTo(sink, 64 * 1024) }
+        }
     }
 
     /** Tells the Mac where the phone's own server listens. The Mac takes the address from the connection. */

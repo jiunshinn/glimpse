@@ -67,6 +67,20 @@ fun GlimpseApp(viewModel: AppViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var scanning by rememberSaveable { mutableStateOf(false) }
     var enteringLink by rememberSaveable { mutableStateOf(false) }
+    // The places opened in a Mac's shared folders, last on top. Back goes one step back.
+    var places by remember { mutableStateOf(listOf<MacPlace>()) }
+
+    places.lastOrNull()?.let { place ->
+        androidx.activity.compose.BackHandler { places = places.dropLast(1) }
+        val open: (MacPlace) -> Unit = { places = places + it }
+        val back = { places = places.dropLast(1) }
+        when (place) {
+            is MacPlace.Shared -> SharedFoldersScreen(place, viewModel.browser, open, back)
+            is MacPlace.Folder -> FolderScreen(place, viewModel.browser, open, back)
+            is MacPlace.Viewer -> MacViewerScreen(place, viewModel.browser, back)
+        }
+        return
+    }
 
     if (scanning) {
         ScannerScreen(
@@ -100,7 +114,12 @@ fun GlimpseApp(viewModel: AppViewModel) {
                     SharingPanel(sharing) { on -> if (on) SharingService.start(context) else SharingService.stop(context) }
                 }
                 items(state.macs, key = { it.mac.fingerprint }) { row ->
-                    MacCard(row, onUnpair = { viewModel.unpair(row.mac) }, onPairAgain = { scanning = true })
+                    MacCard(
+                        row,
+                        onOpen = { places = listOf(MacPlace.Shared(row.mac.id, row.mac.name)) },
+                        onUnpair = { viewModel.unpair(row.mac) },
+                        onPairAgain = { scanning = true },
+                    )
                 }
             }
         }
@@ -156,7 +175,7 @@ private fun EmptyState(modifier: Modifier, onScan: () -> Unit, onEnterLink: () -
 }
 
 @Composable
-private fun MacCard(row: MacRow, onUnpair: () -> Unit, onPairAgain: () -> Unit) {
+private fun MacCard(row: MacRow, onOpen: () -> Unit, onUnpair: () -> Unit, onPairAgain: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     val (label, color) = when (row.status) {
         MacStatus.Searching -> "Looking for the Mac…" to MaterialTheme.colorScheme.outline
@@ -165,7 +184,8 @@ private fun MacCard(row: MacRow, onUnpair: () -> Unit, onPairAgain: () -> Unit) 
         MacStatus.Unreachable -> "Not reachable" to MaterialTheme.colorScheme.outline
         MacStatus.UnpairedByMac -> "The Mac removed this phone. Pair again." to MaterialTheme.colorScheme.error
     }
-    Card(Modifier.fillMaxWidth()) {
+    val connected = row.status == MacStatus.Connected || row.status == MacStatus.ConnectedByCable
+    Card(onClick = onOpen, enabled = connected, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Laptop, contentDescription = null, modifier = Modifier.size(32.dp))
             Spacer(Modifier.width(16.dp))
@@ -177,8 +197,7 @@ private fun MacCard(row: MacRow, onUnpair: () -> Unit, onPairAgain: () -> Unit) 
                     Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 val hint = when (row.status) {
-                    MacStatus.Connected, MacStatus.ConnectedByCable ->
-                        "Open Glimpse on the Mac to browse this phone. The Mac's shared folders will show here in a later version."
+                    MacStatus.Connected, MacStatus.ConnectedByCable -> "Tap to browse the folders that the Mac shares."
                     MacStatus.Unreachable -> "Open Glimpse on the Mac, and use the same Wi-Fi network as the Mac."
                     else -> null
                 }

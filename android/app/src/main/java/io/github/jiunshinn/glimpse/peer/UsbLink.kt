@@ -111,9 +111,12 @@ class UsbLink(
             }
             CLOSE -> closeStream(stream, notify = false)
             HELLO -> {
-                runCatching { JSONObject(payload.toString(Charsets.UTF_8)).getString("id") }.getOrNull()?.let { onMac(it, localPort) }
-                // The Mac app may have started after this link: it needs to know which phone this is.
-                send(0, HELLO, hello.toString().toByteArray(Charsets.UTF_8))
+                val json = runCatching { JSONObject(payload.toString(Charsets.UTF_8)) }.getOrNull()
+                json?.optString("id")?.takeIf { it.isNotEmpty() }?.let { onMac(it, localPort) }
+                // Either app can start after the other, so a first hello gets a reply. A reply gets none.
+                if (json?.optBoolean("reply") != true) {
+                    send(0, HELLO, JSONObject(hello.toString()).put("reply", true).toString().toByteArray(Charsets.UTF_8))
+                }
             }
             NOOP -> Unit
         }

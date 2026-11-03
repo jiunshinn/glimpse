@@ -49,6 +49,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** Addresses from Bonjour, by Mac ID. They are newer than the stored address. */
     private val found = mutableMapOf<String, FoundMac>()
     private var foreground: Job? = null
+    /** The address of each Mac that answered last, by Mac ID. */
+    private val reachable = mutableMapOf<String, Pair<String, Int>>()
+
+    /** Browses the folders that the Macs share. */
+    val browser = MacBrowser(application) { macId ->
+        val mac = store.all().firstOrNull { it.id == macId } ?: return@MacBrowser null
+        val (host, port) = reachable[macId] ?: (mac.host to mac.port)
+        MacEndpoint(client(mac.fingerprint), host, port)
+    }
 
     private val _state = MutableStateFlow(UiState(macs = store.all().map { MacRow(it, MacStatus.Searching) }))
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -141,6 +150,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val info = client.info(host, port)
                 val byCable = cable != null && host == cable.first && port == cable.second
+                reachable[mac.id] = host to port
                 // The cable's local address is not the Mac's address on the network: keep the stored one.
                 val updated = if (byCable) mac.copy(name = info.name) else mac.copy(name = info.name, host = host, port = port)
                 if (updated != mac) store.put(updated)
