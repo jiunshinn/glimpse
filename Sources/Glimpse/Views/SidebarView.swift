@@ -182,6 +182,12 @@ struct SidebarView: View {
             workspace.setPinned(!folder.isPinned, for: folder.url)
         }
         Button("Remove from Workspace") { workspace.removeFolder(folder.url) }
+        if !PeerService.shared.devices.isEmpty {
+            Divider()
+            Button(SharedFolders.shared.isShared(folder.url) ? "Stop Sharing with Phone" : "Share with Phone") {
+                SharedFolders.shared.toggle(folder.url)
+            }
+        }
     }
 
     /// A folder dropped on Favorites is pinned. A folder that is not in the workspace is added first.

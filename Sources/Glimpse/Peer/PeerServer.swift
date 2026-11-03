@@ -208,16 +208,43 @@ private final class PeerConnection: @unchecked Sendable {
     private func send(_ response: HTTPResponse, keepAlive: Bool) {
         connection.send(content: response.serialized(keepAlive: keepAlive), completion: .contentProcessed { [weak self] error in
             guard let self else { return }
-            if keepAlive, error == nil {
-                // A pipelined request may already wait in the buffer.
-                if let next = try? HTTPRequest.parse(&self.buffer) {
-                    self.respond(to: next)
-                } else {
-                    self.receive()
-                }
-            } else {
-                self.cancel()
+            if error == nil, let file = response.file {
+                guard let handle = try? FileHandle(forReadingFrom: file.url) else { return self.cancel() }
+                try? handle.seek(toOffset: file.offset)
+                return self.stream(handle, remaining: file.length, keepAlive: keepAlive)
             }
+            self.finish(error: error, keepAlive: keepAlive)
         })
+    }
+
+    /// Sends a file in chunks, each after the last one left, so a large video never sits in memory.
+    private func stream(_ handle: FileHandle, remaining: UInt64, keepAlive: Bool) {
+        guard remaining > 0 else {
+            try? handle.close()
+            return finish(error: nil, keepAlive: keepAlive)
+        }
+        let chunk = (try? handle.read(upToCount: Int(min(remaining, 256 * 1024)))) ?? Data()
+        guard !chunk.isEmpty else {
+            try? handle.close()
+            return cancel()
+        }
+        connection.send(content: chunk, completion: .contentProcessed { [weak self] error in
+            guard let self else { return }
+            if error != nil {
+                try? handle.close()
+                return self.cancel()
+            }
+            self.stream(handle, remaining: remaining - UInt64(chunk.count), keepAlive: keepAlive)
+        })
+    }
+
+    private func finish(error: NWError?, keepAlive: Bool) {
+        guard keepAlive, error == nil else { return cancel() }
+        // A pipelined request may already wait in the buffer.
+        if let next = try? HTTPRequest.parse(&buffer) {
+            respond(to: next)
+        } else {
+            receive()
+        }
     }
 }

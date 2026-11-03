@@ -211,9 +211,13 @@ final class UsbLink: @unchecked Sendable {
         }
         listener.start(queue: queue)
         read()
-        // Tell the phone which Mac this is, so the phone can reach the Mac's server through the cable too.
+        sendHello(reply: false)
+    }
+
+    /// Tells the phone which Mac this is, so the phone can reach the Mac's server through the cable too.
+    private func sendHello(reply: Bool) {
         let macID = DispatchQueue.main.sync { MainActor.assumeIsolated { PeerService.shared.deviceID } }
-        if let macID, let hello = try? JSONSerialization.data(withJSONObject: ["id": macID]) {
+        if let macID, let hello = try? JSONSerialization.data(withJSONObject: ["id": macID, "reply": reply]) {
             send(0, .hello, hello)
         }
     }
@@ -327,6 +331,8 @@ final class UsbLink: @unchecked Sendable {
             let json = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any]
             deviceID = json?["id"] as? String
             if listener?.port != nil { announce() }
+            // Either app can start after the other, so a first hello gets a reply. A reply gets none.
+            if json?["reply"] as? Bool != true { sendHello(reply: true) }
         case .data:
             streams[stream]?.send(content: payload, completion: .contentProcessed { _ in })
         case .close:

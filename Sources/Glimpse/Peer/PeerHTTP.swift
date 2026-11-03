@@ -65,6 +65,27 @@ struct HTTPResponse {
     var status: Int
     var headers: [String: String] = [:]
     var body = Data()
+    /// A part of a file to send after the head, in chunks, instead of `body`.
+    var file: (url: URL, offset: UInt64, length: UInt64)?
+
+    /// A whole file, or one byte range of it (`Range: bytes=a-b`) for video seeking.
+    static func file(_ url: URL, mime: String, range: String?) -> HTTPResponse {
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(UInt64.init) ?? 0
+        var headers = ["Content-Type": mime, "Accept-Ranges": "bytes"]
+        let bounds = range?.trimmingCharacters(in: .whitespaces).split(separator: "=", maxSplits: 1)
+        guard let bounds, bounds.count == 2, bounds[0] == "bytes", bounds[1].contains("-") else {
+            return HTTPResponse(status: 200, headers: headers, file: (url, 0, size))
+        }
+        let parts = bounds[1].split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
+        let from = UInt64(parts[0]), to = parts.count > 1 ? UInt64(parts[1]) : nil
+        let start = from ?? (size - min(to ?? 0, size))
+        let end = from == nil ? size - 1 : min(to ?? size - 1, size - 1)
+        guard size > 0, start <= end else {
+            return HTTPResponse(status: 416, headers: ["Content-Range": "bytes */\(size)"])
+        }
+        headers["Content-Range"] = "bytes \(start)-\(end)/\(size)"
+        return HTTPResponse(status: 206, headers: headers, file: (url, start, end - start + 1))
+    }
 
     static func json(_ status: Int, _ object: Any) -> HTTPResponse {
         let body = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data()
@@ -79,18 +100,20 @@ struct HTTPResponse {
     func serialized(keepAlive: Bool) -> Data {
         var head = "HTTP/1.1 \(status) \(Self.reason(status))\r\n"
         var all = headers
-        all["Content-Length"] = String(body.count)
+        all["Content-Length"] = String(file?.length ?? UInt64(body.count))
         all["Connection"] = keepAlive ? "keep-alive" : "close"
         for (name, value) in all.sorted(by: { $0.key < $1.key }) {
             head += "\(name): \(value)\r\n"
         }
         head += "\r\n"
-        return Data(head.utf8) + body
+        return Data(head.utf8) + (file == nil ? body : Data())
     }
 
     private static func reason(_ status: Int) -> String {
         switch status {
         case 200: "OK"
+        case 206: "Partial Content"
+        case 416: "Range Not Satisfiable"
         case 400: "Bad Request"
         case 401: "Unauthorized"
         case 403: "Forbidden"

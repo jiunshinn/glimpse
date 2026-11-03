@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UniformTypeIdentifiers
 
 /// A phone that paired with this Mac. The phone proves itself with its certificate fingerprint.
 struct PairedDevice: Codable, Identifiable, Equatable {
@@ -37,6 +38,8 @@ final class PeerService: ObservableObject {
 
     let macName = Host.current().localizedName ?? "Mac"
     private let directory: URL
+    /// Where the peer identity, the paired devices and the shared folders are stored.
+    var storageDirectory: URL { directory }
     private var storedIdentity: PeerIdentity?
     private var server: PeerServer?
 
@@ -158,7 +161,7 @@ final class PeerService: ObservableObject {
 
     // MARK: - API
 
-    func handle(_ request: HTTPRequest, from client: PeerClient) -> HTTPResponse {
+    func handle(_ request: HTTPRequest, from client: PeerClient) async -> HTTPResponse {
         let device = devices.first { $0.fingerprint == client.fingerprint }
         if let device { noteSeen(device) }
         switch (request.method, request.path) {
@@ -169,7 +172,7 @@ final class PeerService: ObservableObject {
                 "platform": "mac",
                 "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev",
                 "protocol": Self.protocolVersions,
-                "capabilities": [String](),
+                "capabilities": ["albums"],
                 "paired": device != nil,
             ])
         case ("POST", "/v1/pair"):
@@ -191,13 +194,49 @@ final class PeerService: ObservableObject {
                 DeviceLibrary.shared.hello(fingerprint: client.fingerprint, host: host, port: port,
                                            name: request.jsonBody?["name"] as? String)
                 return .json(200, ["id": identity?.deviceID ?? ""])
-            case ("GET", "/v1/albums"):
-                // Phase 3 fills this with the folders shared with the phone.
-                return .json(200, ["albums": [Any]()])
             default:
-                return .error(404, "not_found", "No endpoint \(request.method) \(request.path).")
+                return await shared(request)
             }
         }
+    }
+
+    /// The folders shared with phones. The file work runs off the main thread.
+    private func shared(_ request: HTTPRequest) async -> HTTPResponse {
+        let roots = SharedFolders.shared.folders
+        let path = request.path
+        guard request.method == "GET" else {
+            return .error(405, "method_not_allowed", "Only GET is served for shared folders.")
+        }
+        return await Task.detached(priority: .userInitiated) { () -> HTTPResponse in
+            if path == "/v1/albums" {
+                return .json(200, ["albums": SharedLibrary.albums(roots)])
+            }
+            if path.hasPrefix("/v1/albums/"), path.hasSuffix("/items") {
+                let id = String(path.dropFirst("/v1/albums/".count).dropLast("/items".count))
+                guard let root = roots.first(where: { $0.id == id }),
+                      let page = SharedLibrary.items(in: root, path: request.query["path"] ?? "") else {
+                    return .error(404, "not_found", "No such shared folder.")
+                }
+                return .json(200, page)
+            }
+            if path.hasPrefix("/v1/items/"), path.hasSuffix("/thumbnail") {
+                let id = String(path.dropFirst("/v1/items/".count).dropLast("/thumbnail".count))
+                let size = min(max(Int(request.query["size"] ?? "") ?? 256, 32), 2048)
+                guard let url = SharedLibrary.file(for: id, roots: roots), let jpeg = SharedLibrary.thumbnail(url, size: size) else {
+                    return .error(404, "no_thumbnail", "No thumbnail for this item.")
+                }
+                return HTTPResponse(status: 200, headers: ["Content-Type": "image/jpeg"], body: jpeg)
+            }
+            if path.hasPrefix("/v1/items/"), path.hasSuffix("/content") {
+                let id = String(path.dropFirst("/v1/items/".count).dropLast("/content".count))
+                guard let url = SharedLibrary.file(for: id, roots: roots) else {
+                    return .error(404, "not_found", "No such item.")
+                }
+                let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+                return .file(url, mime: mime, range: request.headers["range"])
+            }
+            return .error(404, "not_found", "No endpoint \(request.method) \(path).")
+        }.value
     }
 
     private func pair(_ request: HTTPRequest, client: PeerClient) -> HTTPResponse {
