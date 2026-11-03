@@ -1,6 +1,6 @@
 # Android companion: plan
 
-Status (2026-11-03): phase 0 (pairing) and phase 2 (the Mac browses the phone's albums and folders) are built and tested on a Galaxy S21 with Android 15. See [Spike results](#spike-results) and [Phase 2 results](#phase-2-results). Phase 3 (USB without developer mode) works too; see [Phase 3 results](#phase-3-results).
+Status (2026-11-03): phase 0 (pairing) and phase 2 (the Mac browses the phone's albums and folders) are built and tested on a Galaxy S21 with Android 15. See [Spike results](#spike-results) and [Phase 2 results](#phase-2-results). Phase 3 (USB without developer mode) and phase 4 (the phone browses the Mac's shared folders) work too; see [Phase 3 results](#phase-3-results) and [Phase 4 results](#phase-4-results). Phase 5 (transfers both ways) is next.
 
 **Goal:** Let a normal user browse the photos on their Android phone in Glimpse on the Mac, and browse the Mac's shared folders on the phone. The user must not turn on developer mode or install a driver.
 
@@ -126,7 +126,7 @@ flowchart LR
 | 1. Monorepo setup | Add `android/` and `protocol/`, CI per platform. See [monorepo.md](monorepo.md). | Both apps build in CI from one repository. |
 | 2. Mac browses the phone | Devices sidebar, albums and folders, previews, viewer, drag to copy. Read-only. **Done.** | A user pairs and browses an album and a folder with the arrow keys. |
 | 3. USB without developer mode | Android Open Accessory (AOA): the Mac (`IOUSBHost`) switches the phone to accessory mode, and the same API runs over the USB link. Moved here because some home routers isolate Wi-Fi devices. **Done.** | A phone on a router that isolates devices browses over a cable, with no developer mode. |
-| 4. Phone browses the Mac | **Share with Phone**, the Mac tab, the swipe viewer, save to phone. | A user opens a shared Mac folder on the phone and saves a photo. |
+| 4. Phone browses the Mac | **Share with Phone** (per phone), the Mac's folders on the phone, the swipe viewer, save to phone. **Done.** | A user opens a shared Mac folder on the phone and saves a photo. |
 | 5. Transfers both ways | Share sheet target, upload to a Mac folder or board, progress UI. | A photo goes from Google Photos to a Glimpse board in two taps. |
 | 6. Optional | Delete and move on the phone, video streaming, an event stream for live updates. | To be decided. |
 
@@ -205,6 +205,29 @@ How it works:
 Two bugs found and fixed on the way: the phone dropped a stream's first bytes when it connected the stream on another thread, and two start commands started two servers.
 
 Google Play: AOA is a public Android API with no special permission, so it is allowed. The manifest marks `android.hardware.usb.accessory` as not required, so Play does not hide the app on phones without it. A sandboxed Mac App Store build would need the `com.apple.security.device.usb` entitlement; a notarized direct download needs nothing extra.
+
+## Phase 4 results
+
+Tested on 2026-11-03 with the Galaxy S21 over the USB cable, on a home router that isolates Wi-Fi devices.
+
+How it works:
+
+- **Mac:** a sidebar folder's menu has **Share with Phone ▸ All Phones** (also phones that pair later) and one checkable row per paired phone (`SharedFolders.swift`). The server answers each phone with only the folders shared with it: lists with subfolders, JPEG previews from Glimpse's own decoders, and files in 256 KB chunks with byte ranges. A path that leaves a shared folder is refused.
+- **Phone:** tap a connected Mac card for its shared folders, a grid of previews, and a swipe viewer with pinch to zoom and **Save to phone** (Pictures, Movies or Download, each in a Glimpse folder).
+- **Cable in both directions:** the phone has a local port whose connections go through the cable to the Mac's server. A first hello gets a reply, so either app can start first.
+
+| Check | Result |
+|---|---|
+| Lists, subfolders, previews of a photo, a video and a PDF | Passed (Mac `curl` tests and on the phone) |
+| A 10.8 MB video from the Mac | Identical copy; byte range `206` |
+| A `..` path, an unpaired device | Refused |
+| A folder shared with phone A only | Phone B cannot list it or download from it (`404`) |
+| Viewer, zoom, Save to phone | Passed on the Galaxy S21 |
+| The phone app shows "Connected with USB cable" when Wi-Fi isolates the devices | Passed |
+
+Bugs found and fixed: the Mac crashed when a request used a client that the cable had replaced; the phone's cable port listened on `::1` while the app connected to `127.0.0.1`; the phone missed the Mac's hello when the Mac started first.
+
+Known limits: videos do not play in the phone app yet (save them first); the phone cannot send files to the Mac yet (phase 5).
 
 ## Open questions
 
